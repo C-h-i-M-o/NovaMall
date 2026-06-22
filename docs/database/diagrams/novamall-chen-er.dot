@@ -1,0 +1,237 @@
+graph NovaMallChenER {
+  graph [
+    charset="UTF-8",
+    rankdir=LR,
+    splines=polyline,
+    overlap=prism,
+    sep="+12",
+    nodesep=0.45,
+    ranksep=1.15,
+    pad=0.35,
+    bgcolor="white",
+    fontname="PingFang SC",
+    fontsize=20,
+    label="NovaMall（星选）概念 ER 图（Chen 记法）",
+    labelloc=t,
+    labeljust=c
+  ];
+
+  node [fontname="PingFang SC", fontsize=13, color="#334155", penwidth=1.4];
+  edge [fontname="PingFang SC", fontsize=11, color="#64748b", penwidth=1.2];
+
+  // 实体：矩形
+  node [shape=box, style="rounded,filled", fillcolor="#eff6ff"];
+  users [label=<<B>用户</B><BR/><FONT POINT-SIZE="10">users</FONT>>];
+  roles [label=<<B>角色</B><BR/><FONT POINT-SIZE="10">roles</FONT>>];
+  addresses [label=<<B>收货地址</B><BR/><FONT POINT-SIZE="10">addresses</FONT>>];
+  applications [label=<<B>开店申请</B><BR/><FONT POINT-SIZE="10">merchant_applications</FONT>>];
+  shops [label=<<B>店铺</B><BR/><FONT POINT-SIZE="10">shops</FONT>>];
+  categories [label=<<B>商品分类</B><BR/><FONT POINT-SIZE="10">categories</FONT>>];
+  products [label=<<B>商品</B><BR/><FONT POINT-SIZE="10">products</FONT>>];
+  master_orders [label=<<B>总订单</B><BR/><FONT POINT-SIZE="10">master_orders</FONT>>];
+  shop_orders [label=<<B>店铺子订单</B><BR/><FONT POINT-SIZE="10">shop_orders</FONT>>];
+  order_items [label=<<B>订单明细</B><BR/><FONT POINT-SIZE="10">order_items</FONT>>];
+  payments [label=<<B>支付记录</B><BR/><FONT POINT-SIZE="10">payments</FONT>>];
+  refunds [label=<<B>退款申请</B><BR/><FONT POINT-SIZE="10">refund_requests</FONT>>];
+  price_history [label=<<B>价格变更记录</B><BR/><FONT POINT-SIZE="10">product_price_history</FONT>>];
+  audits [label=<<B>审计日志</B><BR/><FONT POINT-SIZE="10">audit_logs</FONT>>];
+
+  // 联系：菱形
+  node [shape=diamond, style=filled, fillcolor="#fef3c7", color="#b45309", margin=0.08];
+  rel_user_role [label="拥有角色"];
+  rel_address [label="维护"];
+  rel_submit [label="提交"];
+  rel_review_app [label="审核申请"];
+  rel_own_shop [label="经营"];
+  rel_classify [label="归类"];
+  rel_sell [label="销售"];
+  rel_cart [label="加入购物车"];
+  rel_place [label="下单"];
+  rel_split [label="拆分"];
+  rel_fulfill [label="履约"];
+  rel_contain [label="包含"];
+  rel_item_product [label="对应商品"];
+  rel_pay [label="产生支付"];
+  rel_request_refund [label="申请退款"];
+  rel_order_refund [label="关联退款"];
+  rel_review_refund [label="审核退款"];
+  rel_price [label="产生价格历史"];
+  rel_change_price [label="执行改价"];
+  rel_audit [label="执行操作"];
+
+  // 属性：椭圆；主键属性使用下划线
+  node [shape=ellipse, style=filled, fillcolor="#f8fafc", color="#94a3b8", fontsize=11, margin=0.05];
+
+  u_id [label=<<U>用户编号</U>>];
+  u_username [label="用户名"];
+  u_password [label="密码哈希"];
+  u_name [label="会员姓名"];
+  u_phone [label="加密手机号"];
+  u_status [label="账号状态"];
+
+  r_id [label=<<U>角色编号</U>>];
+  r_code [label="角色代码"];
+  r_name [label="角色名称"];
+
+  a_id [label=<<U>地址编号</U>>];
+  a_recipient [label="收件人"];
+  a_region [label="省/市/区"];
+  a_detail [label="详细地址"];
+  a_default [label="是否默认"];
+
+  app_id [label=<<U>申请编号</U>>];
+  app_shop_name [label="拟用店名"];
+  app_desc [label="店铺简介"];
+  app_status [label="审核状态"];
+  app_reason [label="拒绝原因"];
+
+  s_id [label=<<U>店铺编号</U>>];
+  s_name [label="店铺名称"];
+  s_desc [label="店铺简介"];
+  s_logo [label="店铺图片"];
+  s_status [label="店铺状态"];
+
+  c_id [label=<<U>分类编号</U>>];
+  c_name [label="分类名称"];
+  c_sort [label="展示顺序"];
+  c_status [label="分类状态"];
+
+  p_id [label=<<U>商品编号</U>>];
+  p_name [label="商品名称"];
+  p_price [label="商品价格"];
+  p_stock [label="库存数量"];
+  p_desc [label="商品简介"];
+  p_image [label="图片路径"];
+  p_status [label="商品状态"];
+
+  mo_id [label=<<U>总订单编号</U>>];
+  mo_no [label="业务订单号"];
+  mo_token [label="结算幂等令牌"];
+  mo_address [label="收货信息快照"];
+  mo_total [label="总金额"];
+  mo_status [label="总订单状态"];
+  mo_time [label="下单时间"];
+
+  so_id [label=<<U>子订单编号</U>>];
+  so_no [label="子订单号"];
+  so_amount [label="店铺小计"];
+  so_status [label="子订单状态"];
+  so_ship [label="发货时间"];
+
+  oi_id [label=<<U>明细编号</U>>];
+  oi_snapshot [label="商品信息快照"];
+  oi_price [label="成交单价"];
+  oi_qty [label="商品数量"];
+  oi_amount [label="明细金额"];
+
+  pay_id [label=<<U>支付编号</U>>];
+  pay_no [label="支付流水号"];
+  pay_amount [label="支付金额"];
+  pay_method [label="支付方式"];
+  pay_status [label="支付状态"];
+  pay_time [label="支付时间"];
+
+  rf_id [label=<<U>退款编号</U>>];
+  rf_no [label="退款流水号"];
+  rf_amount [label="退款金额"];
+  rf_reason [label="退款原因"];
+  rf_status [label="退款状态"];
+  rf_review [label="审核信息"];
+
+  ph_id [label=<<U>记录编号</U>>];
+  ph_old [label="原价格"];
+  ph_new [label="新价格"];
+  ph_time [label="变更时间"];
+
+  au_id [label=<<U>日志编号</U>>];
+  au_request [label="请求编号"];
+  au_target [label="操作对象"];
+  au_action [label="操作类型"];
+  au_values [label="脱敏新旧值"];
+  au_time [label="操作时间"];
+
+  ur_time [label="授权时间"];
+  cart_qty [label="购物数量"];
+  cart_time [label="加入时间"];
+
+  // 实体与属性
+  edge [color="#cbd5e1", penwidth=0.9];
+  users -- {u_id u_username u_password u_name u_phone u_status};
+  roles -- {r_id r_code r_name};
+  addresses -- {a_id a_recipient a_region a_detail a_default};
+  applications -- {app_id app_shop_name app_desc app_status app_reason};
+  shops -- {s_id s_name s_desc s_logo s_status};
+  categories -- {c_id c_name c_sort c_status};
+  products -- {p_id p_name p_price p_stock p_desc p_image p_status};
+  master_orders -- {mo_id mo_no mo_token mo_address mo_total mo_status mo_time};
+  shop_orders -- {so_id so_no so_amount so_status so_ship};
+  order_items -- {oi_id oi_snapshot oi_price oi_qty oi_amount};
+  payments -- {pay_id pay_no pay_amount pay_method pay_status pay_time};
+  refunds -- {rf_id rf_no rf_amount rf_reason rf_status rf_review};
+  price_history -- {ph_id ph_old ph_new ph_time};
+  audits -- {au_id au_request au_target au_action au_values au_time};
+  rel_user_role -- ur_time;
+  rel_cart -- {cart_qty cart_time};
+
+  // 实体与联系及基数
+  edge [color="#475569", penwidth=1.3];
+  users -- rel_user_role [label="N"];
+  roles -- rel_user_role [label="N"];
+
+  users -- rel_address [label="1"];
+  addresses -- rel_address [label="N"];
+
+  users -- rel_submit [label="1"];
+  applications -- rel_submit [label="0..1"];
+
+  users -- rel_review_app [label="1", xlabel="管理员"];
+  applications -- rel_review_app [label="N"];
+
+  users -- rel_own_shop [label="1", xlabel="店主"];
+  shops -- rel_own_shop [label="0..1"];
+
+  categories -- rel_classify [label="1"];
+  products -- rel_classify [label="N"];
+
+  shops -- rel_sell [label="1"];
+  products -- rel_sell [label="N"];
+
+  users -- rel_cart [label="N"];
+  products -- rel_cart [label="N"];
+
+  users -- rel_place [label="1"];
+  master_orders -- rel_place [label="N"];
+
+  master_orders -- rel_split [label="1"];
+  shop_orders -- rel_split [label="N"];
+
+  shops -- rel_fulfill [label="1"];
+  shop_orders -- rel_fulfill [label="N"];
+
+  shop_orders -- rel_contain [label="1"];
+  order_items -- rel_contain [label="N"];
+
+  products -- rel_item_product [label="1"];
+  order_items -- rel_item_product [label="N"];
+
+  master_orders -- rel_pay [label="1"];
+  payments -- rel_pay [label="1"];
+
+  users -- rel_request_refund [label="1", xlabel="会员"];
+  refunds -- rel_request_refund [label="N"];
+
+  shop_orders -- rel_order_refund [label="1"];
+  refunds -- rel_order_refund [label="0..1"];
+
+  users -- rel_review_refund [label="1", xlabel="店主"];
+  refunds -- rel_review_refund [label="N"];
+
+  products -- rel_price [label="1"];
+  price_history -- rel_price [label="N"];
+
+  users -- rel_change_price [label="1", xlabel="店主"];
+  price_history -- rel_change_price [label="N"];
+
+  users -- rel_audit [label="1"];
+  audits -- rel_audit [label="N"];
+}
