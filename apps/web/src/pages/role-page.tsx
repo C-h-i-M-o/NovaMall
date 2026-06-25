@@ -2,8 +2,13 @@ import { Link } from "react-router-dom";
 import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
 import type {
   AdminMerchantApplication,
+  Category,
+  CategoryInput,
+  CategoryStatus,
   MerchantApplication,
   MerchantApplicationStatus,
+  Product,
+  ProductStatus,
   ShopSummary
 } from "@novamall/shared";
 
@@ -14,12 +19,24 @@ import { RoleNav } from "../app/app.js";
 import {
   ApiClientError,
   approveMerchantApplication,
+  archiveProduct,
+  createCategory,
+  createProduct,
+  disableCategory,
+  enableCategory,
   fetchCsrf,
+  getAdminCategories,
   getMyMerchantApplication,
+  getOwnerProducts,
   getOwnerShop,
+  getPublicCategories,
   listMerchantApplications,
+  publishProduct,
   rejectMerchantApplication,
-  submitMerchantApplication
+  submitMerchantApplication,
+  unpublishProduct,
+  updateCategory,
+  updateStock
 } from "../api/client.js";
 
 type RoleCode = "MEMBER" | "OWNER" | "ADMIN";
@@ -58,9 +75,19 @@ function RoleStageTwoPanel({ role }: RolePageProps) {
     return <MemberMerchantApplicationPanel />;
   }
   if (role === "ADMIN") {
-    return <AdminMerchantApplicationsPanel />;
+    return (
+      <>
+        <AdminMerchantApplicationsPanel />
+        <AdminCategoriesPanel />
+      </>
+    );
   }
-  return <OwnerShopPanel />;
+  return (
+    <>
+      <OwnerShopPanel />
+      <OwnerProductsPanel />
+    </>
+  );
 }
 
 function MemberMerchantApplicationPanel() {
@@ -360,6 +387,411 @@ function OwnerShopPanel() {
       <StatusMessage>{message}</StatusMessage>
     </section>
   );
+}
+
+function AdminCategoriesPanel() {
+  const [csrfToken, setCsrfToken] = useState("");
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState("正在读取分类列表…");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState<CategoryInput>({ name: "" });
+
+  async function refresh(): Promise<void> {
+    try {
+      const result = await getAdminCategories();
+      setCategories(result.data);
+      setTotal(result.meta.total);
+      setMessage(result.meta.total === 0 ? "暂无分类。" : `共 ${result.meta.total} 个分类。`);
+    } catch (error) {
+      setMessage(errorMessage(error, "暂时无法读取分类列表。"));
+    }
+  }
+
+  useEffect(() => {
+    let alive = true;
+    void fetchCsrf()
+      .then((token) => { if (alive) setCsrfToken(token); })
+      .catch((error) => { if (alive) setMessage(errorMessage(error, "暂时无法获取安全令牌。")); });
+    void getAdminCategories()
+      .then((result) => {
+        if (alive) {
+          setCategories(result.data);
+          setTotal(result.meta.total);
+          setMessage(result.meta.total === 0 ? "暂无分类。" : `共 ${result.meta.total} 个分类。`);
+        }
+      })
+      .catch((error) => { if (alive) setMessage(errorMessage(error, "暂时无法读取分类列表。")); });
+    return () => { alive = false; };
+  }, []);
+
+  async function handleCreate(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+    const name = formValue(formData, "name").trim();
+    const description = formValue(formData, "description").trim();
+    const sortOrderStr = formValue(formData, "sortOrder").trim();
+    if (name.length < 2) { setMessage("分类名称至少 2 个字。"); return; }
+    setLoading(true);
+    try {
+      await createCategory({
+        name,
+        description: description.length > 0 ? description : undefined,
+        sortOrder: sortOrderStr.length > 0 ? parseInt(sortOrderStr, 10) : undefined
+      }, csrfToken);
+      (event.target as HTMLFormElement).reset();
+      await refresh();
+    } catch (error) {
+      setMessage(errorMessage(error, "创建分类失败。"));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function startEdit(category: Category): void {
+    setEditingId(category.id);
+    setEditForm({ name: category.name, description: category.description ?? "", sortOrder: category.sortOrder });
+  }
+
+  function cancelEdit(): void {
+    setEditingId(null);
+    setEditForm({ name: "" });
+  }
+
+  async function saveEdit(): Promise<void> {
+    if (editingId === null) return;
+    const name = (editForm.name ?? "").trim();
+    if (name.length < 2) { setMessage("分类名称至少 2 个字。"); return; }
+    setLoading(true);
+    try {
+      await updateCategory(editingId, {
+        name,
+        description: (editForm.description ?? "").trim() || undefined,
+        sortOrder: editForm.sortOrder
+      }, csrfToken);
+      cancelEdit();
+      await refresh();
+    } catch (error) {
+      setMessage(errorMessage(error, "编辑分类失败。"));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function toggleStatus(category: Category): Promise<void> {
+    setLoading(true);
+    try {
+      if (category.status === "ACTIVE") {
+        await disableCategory(category.id, csrfToken);
+      } else {
+        await enableCategory(category.id, csrfToken);
+      }
+      await refresh();
+    } catch (error) {
+      setMessage(errorMessage(error, "操作失败。"));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <section className="stage-panel" aria-labelledby="admin-categories-title">
+      <div className="section-heading">
+        <h2 id="admin-categories-title">分类管理</h2>
+        <span>共 {total} 个</span>
+      </div>
+      <form className="form-stack stage-form" noValidate onSubmit={(event) => { void handleCreate(event); }}>
+        <label className="field">
+          <span>分类名称</span>
+          <input aria-label="分类名称" name="name" minLength={2} maxLength={100} required />
+        </label>
+        <label className="field">
+          <span>分类描述（可选）</span>
+          <input aria-label="分类描述" name="description" maxLength={500} />
+        </label>
+        <label className="field">
+          <span>排序序号</span>
+          <input aria-label="排序序号" name="sortOrder" type="number" min={0} defaultValue={0} />
+        </label>
+        <Button type="submit" loading={loading} disabled={csrfToken.length === 0}>新增分类</Button>
+      </form>
+      <div className="application-list">
+        {categories.map((category) => (
+          <article className="application-row" key={category.id}>
+            {editingId === category.id ? (
+              <div className="form-stack stage-form">
+                <label className="field">
+                  <span>名称</span>
+                  <input value={editForm.name ?? ""} onChange={(event) => { setEditForm((prev) => ({ ...prev, name: event.target.value })); }} />
+                </label>
+                <label className="field">
+                  <span>描述</span>
+                  <input value={editForm.description ?? ""} onChange={(event) => { setEditForm((prev) => ({ ...prev, description: event.target.value })); }} />
+                </label>
+                <label className="field">
+                  <span>排序</span>
+                  <input type="number" value={editForm.sortOrder ?? 0} onChange={(event) => { setEditForm((prev) => ({ ...prev, sortOrder: parseInt(event.target.value, 10) || 0 })); }} />
+                </label>
+                <div className="row-actions">
+                  <Button loading={loading} onClick={() => { void saveEdit(); }}>保存</Button>
+                  <Button variant="secondary" onClick={cancelEdit}>取消</Button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div>
+                  <strong>{category.name}</strong>
+                  {category.description ? <p>{category.description}</p> : null}
+                  <span>排序：{category.sortOrder}</span>
+                </div>
+                <CategoryStatusBadge status={category.status} />
+                <div className="row-actions">
+                  <Button variant="secondary" onClick={() => { startEdit(category); }}>编辑</Button>
+                  <Button variant="secondary" loading={loading} onClick={() => { void toggleStatus(category); }}>
+                    {category.status === "ACTIVE" ? "停用" : "启用"}
+                  </Button>
+                </div>
+              </>
+            )}
+          </article>
+        ))}
+      </div>
+      <StatusMessage>{message}</StatusMessage>
+    </section>
+  );
+}
+
+function OwnerProductsPanel() {
+  const [csrfToken, setCsrfToken] = useState("");
+  const [products, setProducts] = useState<Product[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [total, setTotal] = useState(0);
+  const [statusFilter, setStatusFilter] = useState<ProductStatus | "ALL">("ALL");
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState("正在读取商品列表…");
+  const [showForm, setShowForm] = useState(false);
+
+  async function refresh(nextFilter = statusFilter): Promise<void> {
+    try {
+      const result = await getOwnerProducts(nextFilter === "ALL" ? undefined : nextFilter);
+      setProducts(result.data);
+      setTotal(result.meta.total);
+      setMessage(result.meta.total === 0 ? "暂无商品。" : `共 ${result.meta.total} 个商品。`);
+    } catch (error) {
+      setMessage(errorMessage(error, "暂时无法读取商品列表。"));
+    }
+  }
+
+  useEffect(() => {
+    let alive = true;
+    void fetchCsrf()
+      .then((token) => { if (alive) setCsrfToken(token); })
+      .catch((error) => { if (alive) setMessage(errorMessage(error, "暂时无法获取安全令牌。")); });
+    void getPublicCategories()
+      .then((cats) => { if (alive) setCategories(cats); })
+      .catch(() => {});
+    void getOwnerProducts()
+      .then((result) => {
+        if (alive) {
+          setProducts(result.data);
+          setTotal(result.meta.total);
+          setMessage(result.meta.total === 0 ? "暂无商品。" : `共 ${result.meta.total} 个商品。`);
+        }
+      })
+      .catch((error) => { if (alive) setMessage(errorMessage(error, "暂时无法读取商品列表。")); });
+    return () => { alive = false; };
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
+    void getOwnerProducts(statusFilter === "ALL" ? undefined : statusFilter)
+      .then((result) => {
+        if (alive) {
+          setProducts(result.data);
+          setTotal(result.meta.total);
+          setMessage(result.meta.total === 0 ? "暂无商品。" : `共 ${result.meta.total} 个商品。`);
+        }
+      })
+      .catch((error) => { if (alive) setMessage(errorMessage(error, "暂时无法读取商品列表。")); });
+    return () => { alive = false; };
+  }, [statusFilter]);
+
+  async function handleCreate(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+    const name = formValue(formData, "name").trim();
+    const price = formValue(formData, "price").trim();
+    const stock = formValue(formData, "stock").trim();
+    const description = formValue(formData, "description").trim();
+    const categoryId = formValue(formData, "categoryId").trim();
+
+    if (name.length < 2 || price.length === 0 || stock.length === 0 || description.length === 0 || categoryId.length === 0) {
+      setMessage("请填写所有必填字段。");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await createProduct({
+        name,
+        price,
+        stock: parseInt(stock, 10),
+        description,
+        categoryId,
+        imagePath: ""
+      }, csrfToken);
+      (event.target as HTMLFormElement).reset();
+      setShowForm(false);
+      await refresh();
+    } catch (error) {
+      setMessage(errorMessage(error, "创建商品失败。"));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleStatusAction(productId: string, action: "publish" | "unpublish" | "archive"): Promise<void> {
+    setLoading(true);
+    try {
+      if (action === "publish") await publishProduct(productId, csrfToken);
+      else if (action === "unpublish") await unpublishProduct(productId, csrfToken);
+      else await archiveProduct(productId, csrfToken);
+      await refresh();
+    } catch (error) {
+      setMessage(errorMessage(error, "操作失败。"));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleStockChange(productId: string, newStock: number): Promise<void> {
+    setLoading(true);
+    try {
+      await updateStock(productId, newStock, csrfToken);
+      await refresh();
+    } catch (error) {
+      setMessage(errorMessage(error, "库存更新失败。"));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function statusFilterLabel(s: ProductStatus | "ALL"): string {
+    if (s === "ALL") return "全部";
+    if (s === "DRAFT") return "草稿";
+    if (s === "ON_SALE") return "上架";
+    if (s === "OFF_SALE") return "下架";
+    return "归档";
+  }
+
+  return (
+    <section className="stage-panel" aria-labelledby="owner-products-title">
+      <div className="section-heading">
+        <h2 id="owner-products-title">商品管理</h2>
+        <span>共 {total} 个</span>
+        <Button variant="secondary" onClick={() => { setShowForm((prev) => !prev); }}>
+          {showForm ? "取消新增" : "新增商品"}
+        </Button>
+      </div>
+
+      {showForm ? (
+        <form className="form-stack stage-form" noValidate onSubmit={(event) => { void handleCreate(event); }}>
+          <label className="field">
+            <span>分类</span>
+            <select aria-label="分类" name="categoryId" required>
+              <option value="">请选择分类</option>
+              {categories.map((cat) => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
+            </select>
+          </label>
+          <label className="field">
+            <span>商品名称</span>
+            <input aria-label="商品名称" name="name" minLength={2} maxLength={200} required />
+          </label>
+          <label className="field">
+            <span>价格</span>
+            <input aria-label="价格" name="price" placeholder="例如：29.90" required />
+          </label>
+          <label className="field">
+            <span>库存</span>
+            <input aria-label="库存" name="stock" type="number" min={0} defaultValue={0} required />
+          </label>
+          <label className="field">
+            <span>描述</span>
+            <textarea aria-label="商品描述" name="description" rows={3} minLength={1} maxLength={5000} required />
+          </label>
+          <Button type="submit" loading={loading} disabled={csrfToken.length === 0}>创建商品（草稿）</Button>
+        </form>
+      ) : null}
+
+      <label className="field filter-control">
+        <span>商品状态</span>
+        <select aria-label="商品状态" value={statusFilter} onChange={(event) => { setStatusFilter(parseProductStatusFilter(event.target.value)); }}>
+          {(["ALL", "DRAFT", "ON_SALE", "OFF_SALE", "ARCHIVED"] as const).map((s) => (
+            <option key={s} value={s}>{statusFilterLabel(s)}</option>
+          ))}
+        </select>
+      </label>
+
+      <div className="application-list">
+        {products.map((product) => (
+          <article className="application-row" key={product.id}>
+            <div>
+              <strong>{product.name}</strong>
+              <span>¥{product.price}</span>
+              <p>库存：{product.stock}</p>
+              <p>分类：{product.categoryName}</p>
+              <span>{product.shopName}</span>
+            </div>
+            <ProductStatusBadge status={product.status} />
+            <div className="row-actions">
+              {product.status === "DRAFT" || product.status === "OFF_SALE" ? (
+                <Button loading={loading} onClick={() => { void handleStatusAction(product.id, "publish"); }}>上架</Button>
+              ) : null}
+              {product.status === "ON_SALE" ? (
+                <Button variant="secondary" loading={loading} onClick={() => { void handleStatusAction(product.id, "unpublish"); }}>下架</Button>
+              ) : null}
+              {product.status !== "ARCHIVED" ? (
+                <Button variant="secondary" loading={loading} onClick={() => { void handleStatusAction(product.id, "archive"); }}>归档</Button>
+              ) : null}
+              <Button variant="secondary" onClick={() => {
+                const stockStr = window.prompt("新库存值：", String(product.stock));
+                if (stockStr !== null) {
+                  const newStock = parseInt(stockStr, 10);
+                  if (!isNaN(newStock) && newStock >= 0) {
+                    void handleStockChange(product.id, newStock);
+                  }
+                }
+              }}>调库存</Button>
+            </div>
+          </article>
+        ))}
+      </div>
+      <StatusMessage>{message}</StatusMessage>
+    </section>
+  );
+}
+
+function CategoryStatusBadge({ status }: { status: CategoryStatus }) {
+  return <span className="status-badge">{status === "ACTIVE" ? "启用" : "停用"}</span>;
+}
+
+function ProductStatusBadge({ status }: { status: ProductStatus }) {
+  return <span className="status-badge">{productStatusLabel(status)}</span>;
+}
+
+function productStatusLabel(status: ProductStatus): string {
+  if (status === "DRAFT") return "草稿";
+  if (status === "ON_SALE") return "上架";
+  if (status === "OFF_SALE") return "下架";
+  return "归档";
+}
+
+function parseProductStatusFilter(value: string): ProductStatus | "ALL" {
+  if (value === "DRAFT" || value === "ON_SALE" || value === "OFF_SALE" || value === "ARCHIVED") {
+    return value;
+  }
+  return "ALL";
 }
 
 function StatusBadge({ status }: { status: MerchantApplication["status"] | ShopSummary["status"] }) {

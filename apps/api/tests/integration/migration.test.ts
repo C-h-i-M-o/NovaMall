@@ -20,7 +20,7 @@ interface ConstraintRow extends RowDataPacket {
   CONSTRAINT_NAME: string;
 }
 
-describe("阶段 1 数据库迁移", () => {
+describe("数据库迁移", () => {
   let pool: Pool;
 
   beforeAll(() => {
@@ -32,9 +32,15 @@ describe("阶段 1 数据库迁移", () => {
       `SELECT TABLE_NAME
          FROM information_schema.TABLES
         WHERE TABLE_SCHEMA = DATABASE()
-          AND TABLE_NAME IN ('users', 'user_roles', 'merchant_applications', 'shops', 'audit_logs')`
+          AND TABLE_NAME IN ('users', 'user_roles', 'merchant_applications', 'shops', 'audit_logs', 'products', 'product_price_history', 'categories')`
     );
     const tableNames = new Set(tables.map((row) => row.TABLE_NAME));
+    if (tableNames.has("product_price_history")) {
+      await pool.query("DELETE FROM product_price_history");
+    }
+    if (tableNames.has("products")) {
+      await pool.query("DELETE FROM products");
+    }
     if (tableNames.has("audit_logs")) {
       await pool.query("DELETE FROM audit_logs");
     }
@@ -43,6 +49,9 @@ describe("阶段 1 数据库迁移", () => {
     }
     if (tableNames.has("merchant_applications")) {
       await pool.query("DELETE FROM merchant_applications");
+    }
+    if (tableNames.has("categories")) {
+      await pool.query("DELETE FROM categories");
     }
     if (tableNames.has("user_roles")) {
       await pool.query("DELETE FROM user_roles");
@@ -56,7 +65,7 @@ describe("阶段 1 数据库迁移", () => {
     await pool.end();
   });
 
-  it("创建认证表和迁移记录表", async () => {
+  it("创建所有业务表和迁移记录表", async () => {
     const [rows] = await pool.query<TableRow[]>(
       `SELECT TABLE_NAME
          FROM information_schema.TABLES
@@ -72,6 +81,9 @@ describe("阶段 1 数据库迁移", () => {
       "merchant_applications",
       "shops",
       "audit_logs",
+      "categories",
+      "products",
+      "product_price_history",
       "schema_migrations"
     ]));
   });
@@ -127,6 +139,98 @@ describe("阶段 1 数据库迁移", () => {
       `INSERT INTO users (username, password_hash, display_name, phone_cipher, phone_iv, status)
        VALUES (?, ?, ?, ?, ?, ?)`,
       ["invalid_status", "hash", "非法状态", Buffer.from("cipher"), Buffer.alloc(16), "UNKNOWN"]
+    )).rejects.toMatchObject({ code: "ER_CHECK_CONSTRAINT_VIOLATED" });
+  });
+
+  it("创建阶段 3 目录表", async () => {
+    const [rows] = await pool.query<TableRow[]>(
+      `SELECT TABLE_NAME
+         FROM information_schema.TABLES
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME IN ('categories', 'products', 'product_price_history')`
+    );
+
+    expect(rows.map((row) => row.TABLE_NAME).sort()).toEqual([
+      "categories",
+      "product_price_history",
+      "products"
+    ]);
+  });
+
+  it("创建价格历史触发器", async () => {
+    const [rows] = await pool.query<TriggerRow[]>(
+      `SELECT TRIGGER_NAME
+         FROM information_schema.TRIGGERS
+        WHERE TRIGGER_SCHEMA = DATABASE()
+          AND TRIGGER_NAME = 'trg_products_price_history'`
+    );
+
+    expect(rows.map((row) => row.TRIGGER_NAME)).toEqual(["trg_products_price_history"]);
+  });
+
+  it("创建商品和分类关键约束", async () => {
+    const [constraintRows] = await pool.query<ConstraintRow[]>(
+      `SELECT CONSTRAINT_NAME
+         FROM information_schema.TABLE_CONSTRAINTS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME IN ('categories', 'products')
+          AND CONSTRAINT_TYPE = 'UNIQUE'
+        ORDER BY CONSTRAINT_NAME`
+    );
+
+    expect(constraintRows.map((row) => row.CONSTRAINT_NAME)).toEqual(
+      expect.arrayContaining(["uq_categories_name"])
+    );
+  });
+
+  it("创建商品 FULLTEXT ngram 索引", async () => {
+    const [rows] = await pool.query<(RowDataPacket & { INDEX_NAME: string; INDEX_TYPE: string })[]>(
+      `SELECT INDEX_NAME, INDEX_TYPE
+         FROM information_schema.STATISTICS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = 'products'
+          AND INDEX_NAME = 'ft_products_name_desc'`
+    );
+
+    expect(rows.length).toBeGreaterThan(0);
+  });
+
+  it("拒绝负数价格和非法商品状态", async () => {
+    const [categoryResult] = await pool.execute<mysql.ResultSetHeader>(
+      `INSERT INTO categories (name) VALUES (?)`,
+      ["测试分类"]
+    );
+    const categoryId = categoryResult.insertId;
+
+    const [userResult] = await pool.execute<mysql.ResultSetHeader>(
+      `INSERT INTO users (username, password_hash, display_name, phone_cipher, phone_iv)
+       VALUES (?, ?, ?, ?, ?)`,
+      ["shop_owner_test", "hash", "店主测试", Buffer.from("cipher"), Buffer.alloc(16)]
+    );
+    const userId = userResult.insertId;
+
+    await pool.execute(
+      `INSERT INTO shops (owner_user_id, name, description) VALUES (?, ?, ?)`,
+      [userId, "测试店铺", "商品迁移测试的临时店铺"]
+    );
+    const [shopRows] = await pool.query<(RowDataPacket & { id: number })[]>(
+      "SELECT id FROM shops WHERE owner_user_id = ?", [userId]
+    );
+    const shopId = shopRows[0]?.id;
+    if (shopId === undefined) {
+      throw new Error("测试店铺创建失败");
+    }
+
+    await expect(pool.execute(
+      `INSERT INTO products (shop_id, category_id, name, price, stock, description)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [shopId, categoryId, "负价商品", -1, 10, "不应允许负价格"]
+    )).rejects.toMatchObject({ code: "ER_CHECK_CONSTRAINT_VIOLATED" });
+
+    await expect(pool.execute(
+      `INSERT INTO products (shop_id, category_id, name, price, stock, description, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [shopId, categoryId, "非法状态商品", 10, 10, "不应允许非法状态", "INVALID"]
     )).rejects.toMatchObject({ code: "ER_CHECK_CONSTRAINT_VIOLATED" });
   });
 

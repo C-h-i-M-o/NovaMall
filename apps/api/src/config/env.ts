@@ -6,7 +6,8 @@ const envSchema = z.object({
   DATABASE_URL: z.string().url(),
   SESSION_SECRET: z.string().min(32),
   PHONE_AES_KEY: z.string().min(32),
-  WEB_ORIGIN: z.string().url()
+  WEB_ORIGIN: z.string().url(),
+  UPLOAD_DIR: z.string().optional()
 });
 
 export type Env = z.infer<typeof envSchema>;

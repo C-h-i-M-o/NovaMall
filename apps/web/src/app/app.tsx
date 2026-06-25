@@ -3,7 +3,9 @@ import { Navigate, NavLink, Route, Routes } from "react-router-dom";
 import type { AuthSessionData, RoleCode } from "@novamall/shared";
 
 import { getCurrentSession } from "../api/client.js";
+import { CatalogPage } from "../pages/catalog-page.js";
 import { LoginPage } from "../pages/login-page.js";
+import { ProductDetailPage } from "../pages/product-detail-page.js";
 import { RegisterPage } from "../pages/register-page.js";
 import { RolePage } from "../pages/role-page.js";
 
@@ -18,6 +20,8 @@ export function App() {
       <Route path="/" element={<HomeRedirect />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
+      <Route path="/catalog" element={<CatalogPage />} />
+      <Route path="/products/:productId" element={<ProductDetailPage />} />
       <Route path="/member" element={<ProtectedRoleRoute role="MEMBER" />} />
       <Route path="/owner" element={<ProtectedRoleRoute role="OWNER" />} />
       <Route path="/admin" element={<ProtectedRoleRoute role="ADMIN" />} />

@@ -219,6 +219,10 @@
 | DUPLICATE_APPLICATION | 409 | 申请状态冲突 |
 | APPLICATION_STATE_CONFLICT | 409 | 当前申请状态不允许操作 |
 | SHOP_NAME_TAKEN | 409 | 店铺名已被使用 |
+| CATEGORY_NAME_TAKEN | 409 | 分类名称已被使用 |
+| PRODUCT_NOT_OWNED | 403 | 商品不属于当前店铺 |
+| PRODUCT_STATUS_CONFLICT | 409 | 当前商品状态不允许此操作 |
+| UPLOAD_INVALID | 400 | 上传文件不合法 |
 | ORDER_STATE_CONFLICT | 409 | 订单状态不允许操作 |
 | REFUND_STATE_CONFLICT | 409 | 退款状态不允许操作 |
 | INTERNAL_ERROR | 500 | 未知服务错误 |

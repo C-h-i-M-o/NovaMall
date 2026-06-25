@@ -5,8 +5,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ApiClientError,
   fetchCsrf,
+  getAdminCategories,
   getMyMerchantApplication,
+  getOwnerProducts,
   getOwnerShop,
+  getPublicCategories,
   listMerchantApplications,
   rejectMerchantApplication,
   submitMerchantApplication
@@ -26,7 +29,19 @@ vi.mock("../api/client.js", () => ({
   listMerchantApplications: vi.fn(),
   submitMerchantApplication: vi.fn(),
   approveMerchantApplication: vi.fn(),
-  rejectMerchantApplication: vi.fn()
+  rejectMerchantApplication: vi.fn(),
+  getAdminCategories: vi.fn(),
+  getPublicCategories: vi.fn(),
+  getOwnerProducts: vi.fn(),
+  createCategory: vi.fn(),
+  updateCategory: vi.fn(),
+  disableCategory: vi.fn(),
+  enableCategory: vi.fn(),
+  createProduct: vi.fn(),
+  publishProduct: vi.fn(),
+  unpublishProduct: vi.fn(),
+  archiveProduct: vi.fn(),
+  updateStock: vi.fn()
 }));
 
 const mockedFetchCsrf = vi.mocked(fetchCsrf);
@@ -35,11 +50,17 @@ const mockedGetOwnerShop = vi.mocked(getOwnerShop);
 const mockedListMerchantApplications = vi.mocked(listMerchantApplications);
 const mockedSubmitMerchantApplication = vi.mocked(submitMerchantApplication);
 const mockedRejectMerchantApplication = vi.mocked(rejectMerchantApplication);
+const mockedGetAdminCategories = vi.mocked(getAdminCategories);
+const mockedGetPublicCategories = vi.mocked(getPublicCategories);
+const mockedGetOwnerProducts = vi.mocked(getOwnerProducts);
 
 describe("RolePage 商户入驻区块", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockedFetchCsrf.mockResolvedValue("csrf-token");
+    mockedGetAdminCategories.mockResolvedValue({ data: [], meta: { page: 1, pageSize: 20, total: 0 } });
+    mockedGetPublicCategories.mockResolvedValue([]);
+    mockedGetOwnerProducts.mockResolvedValue({ data: [], meta: { page: 1, pageSize: 20, total: 0 } });
   });
 
   afterEach(() => {
