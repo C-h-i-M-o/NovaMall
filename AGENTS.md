@@ -23,6 +23,15 @@
 - 密码只能使用安全的不可逆哈希；手机号按安全文档使用 AES 加密。
 - 数据库金额统一使用 `DECIMAL`，禁止用浮点数表示金额。
 
+## 当前项目状态
+
+- 当前已完成到阶段 3 商品目录闭环：认证、个人主页、商户入驻、分类管理、店主商品发布、公开商品列表和图片上传均已有实现。
+- 前端功能已拆到独立路由，会员、店主、管理员通过侧边导航切换；个人主页位于 `/profile`。
+- Docker 前端入口为 `http://localhost:8080`，主库 MySQL 为本地调试映射到 `127.0.0.1:3307`，测试库映射到 `127.0.0.1:3308`。
+- 后端上传目录挂载到 Docker 卷 `uploads-data`，商品图片路径为 `/uploads/products/...`，前端访问时经 `/api/v1/uploads/...` 代理；历史图片缺失时显示 `product-placeholder.svg`。
+- 默认头像为 `apps/web/public/default-avatar.svg`，系统不向用户开放上传头像。
+- `.env`、上传目录、测试结果、构建产物和 pnpm 本地 store 都不得提交。
+
 ## 架构边界
 
 - 后端调用方向固定为 `Route → Controller → Service → Repository`。
@@ -53,6 +62,8 @@
 - 每个阶段至少执行类型检查、Lint、单元测试、集成测试和构建；涉及数据库时必须执行数据库专项测试。
 - 阶段验收以 `docs/testing-and-acceptance.md` 和 `docs/development-plan.md` 为准。
 - 未运行验证时不得声称功能完成或问题已修复。
+- Docker 镜像内静态资源不会因 `docker compose restart` 自动更新；涉及前端构建或后端镜像内容时，验证后需要使用 `docker compose up --build -d` 让本地页面生效。
+- 集成测试默认依赖 `docker compose -f docker-compose.test.yml up -d mysql-test` 和 `TEST_DATABASE_URL='mysql://novamall:novamall_test_password@127.0.0.1:3308/novamall_test'`。
 
 ## Git 规则
 

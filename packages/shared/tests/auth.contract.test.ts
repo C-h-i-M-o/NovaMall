@@ -3,9 +3,11 @@ import { describe, expect, it } from "vitest";
 import {
   authSessionDataSchema,
   loginInputSchema,
+  privateProfileSchema,
   registerInputSchema,
   roleCodeSchema,
-  successResponseSchema
+  successResponseSchema,
+  updatePrivateProfileInputSchema
 } from "../src/auth.contract.js";
 import { apiErrorCodeSchema } from "../src/errors.js";
 
@@ -14,17 +16,47 @@ describe("认证输入合同", () => {
     expect(registerInputSchema.safeParse({
       username: "nova_user",
       password: "StrongPass123!",
-      displayName: "星选用户",
       phone: "13800138000"
     }).success).toBe(true);
   });
 
-  it("拒绝过短用户名、密码、空昵称和非法手机号", () => {
+  it("注册输入不再接收展示名", () => {
+    expect(registerInputSchema.safeParse({
+      username: "nova_user",
+      password: "StrongPass123!",
+      displayName: "星选用户",
+      phone: "13800138000"
+    }).success).toBe(false);
+  });
+
+  it("拒绝过短用户名、弱密码和非法手机号", () => {
     expect(registerInputSchema.safeParse({
       username: "x",
       password: "short",
-      displayName: "",
       phone: "123"
+    }).success).toBe(false);
+  });
+
+  it("注册密码至少 8 位且包含大小写英文和数字", () => {
+    expect(registerInputSchema.safeParse({
+      username: "nova_user",
+      password: "Pass1234",
+      phone: "13800138000"
+    }).success).toBe(true);
+    expect(registerInputSchema.safeParse({
+      username: "nova_user",
+      password: "pass1234",
+      phone: "13800138000"
+    }).success).toBe(false);
+    expect(registerInputSchema.safeParse({
+      username: "nova_user",
+      password: "PASSWORD123",
+      phone: "13800138000"
+    }).success).toBe(false);
+    expect(registerInputSchema.safeParse({
+      username: "nova_user",
+      password: "Password",
+      phone: "13800138000"
     }).success).toBe(false);
   });
 
@@ -70,6 +102,46 @@ describe("认证输出合同", () => {
         },
         csrfToken: "csrf-token"
       }
+    }).success).toBe(false);
+  });
+
+  it("个人资料包含展示名、手机号和角色", () => {
+    expect(privateProfileSchema.safeParse({
+      id: "1",
+      username: "nova_user",
+      displayName: "星选用户",
+      phone: "13800138000",
+      roles: ["MEMBER"]
+    }).success).toBe(true);
+  });
+
+  it("个人资料允许旧密钥无法解密时返回空手机号", () => {
+    expect(privateProfileSchema.safeParse({
+      id: "1",
+      username: "legacy_user",
+      displayName: "旧资料用户",
+      phone: "",
+      roles: ["MEMBER"]
+    }).success).toBe(true);
+  });
+});
+
+describe("个人资料输入合同", () => {
+  it("允许修改展示名、手机号和密码", () => {
+    expect(updatePrivateProfileInputSchema.safeParse({
+      displayName: "星选会员",
+      phone: "13900139000",
+      currentPassword: "StrongPass123!",
+      newPassword: "NextPass123"
+    }).success).toBe(true);
+  });
+
+  it("拒绝空修改、非法手机号和弱新密码", () => {
+    expect(updatePrivateProfileInputSchema.safeParse({}).success).toBe(false);
+    expect(updatePrivateProfileInputSchema.safeParse({ phone: "123" }).success).toBe(false);
+    expect(updatePrivateProfileInputSchema.safeParse({
+      currentPassword: "StrongPass123!",
+      newPassword: "weakpass"
     }).success).toBe(false);
   });
 });

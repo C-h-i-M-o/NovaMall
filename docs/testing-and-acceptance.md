@@ -105,12 +105,12 @@
 ### 当前阶段验收命令
 
 ```bash
-pnpm lint
-pnpm typecheck
-pnpm test
-pnpm test:integration
-pnpm test:e2e
-pnpm build
+CI=true pnpm lint
+CI=true pnpm typecheck
+CI=true pnpm test
+TEST_DATABASE_URL='mysql://novamall:novamall_test_password@127.0.0.1:3308/novamall_test' CI=true pnpm test:integration
+CI=true pnpm test:e2e
+CI=true pnpm build
 docker compose config
 git diff --check
 ```
@@ -122,7 +122,14 @@ docker compose -f docker-compose.test.yml up -d mysql-test
 TEST_DATABASE_URL='mysql://novamall:novamall_test_password@127.0.0.1:3308/novamall_test' pnpm db:test:migrate
 ```
 
-阶段 3 当前自动化覆盖：共享合同、API 单元、商户入驻与商品目录 API/数据库集成、Web 角色页与路由守卫、Playwright 浏览器 E2E。E2E 会通过 `seed-demo` 服务准备 `demo_owner` 和 `demo_admin` 演示账号，并覆盖会员提交开店申请、管理员批准、会员进入店主后台，以及管理员创建分类、店主发布带图商品、会员按关键词搜索商品的最小链路。
+阶段 3 当前自动化覆盖：共享合同、API 单元、认证/商户入驻/商品目录 API 与数据库集成、Web 角色页与路由守卫、Playwright 浏览器 E2E。E2E 会通过 `seed-demo` 服务准备 `demo_owner` 和 `demo_admin` 演示账号，并覆盖会员提交开店申请、管理员批准、会员进入店主后台，以及管理员创建分类、店主发布带图商品、会员按关键词搜索商品的最小链路。
+
+当前 Docker 验收补充：
+
+- 主库映射 `127.0.0.1:3307`，测试库映射 `127.0.0.1:3308`；
+- 后端上传目录使用 `uploads-data` 卷持久化；
+- 前端对历史缺失商品图片显示统一占位图；
+- 变更前端静态资源或后端镜像内容后，需要使用 `docker compose up --build -d` 而不是只重启容器。
 
 每阶段结束必须满足：
 
@@ -137,19 +144,17 @@ TEST_DATABASE_URL='mysql://novamall:novamall_test_password@127.0.0.1:3308/novama
 9. `git diff --check` 通过；
 10. 实际结果已报告，未运行项明确标注。
 
-计划命令在基础设施阶段落地后统一为 pnpm scripts，例如：
+常用完整验证命令：
 
 ```bash
-pnpm lint
-pnpm typecheck
-pnpm test
-pnpm test:integration
-pnpm test:e2e
-pnpm build
+CI=true pnpm lint
+CI=true pnpm typecheck
+CI=true pnpm test
+TEST_DATABASE_URL='mysql://novamall:novamall_test_password@127.0.0.1:3308/novamall_test' CI=true pnpm test:integration
+CI=true pnpm test:e2e
+CI=true pnpm build
 docker compose up --build
 ```
-
-在脚本尚未创建前，这些命令只代表计划接口，不代表当前可运行。
 
 ## 9. 最终验收场景
 

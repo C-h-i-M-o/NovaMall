@@ -55,17 +55,21 @@
 | POST | `/auth/login` | 公开 | 登录并轮换 Session ID |
 | POST | `/auth/logout` | 已登录 | 销毁 Session |
 | GET | `/auth/session` | 已登录 | 当前用户、角色和 CSRF Token |
+| GET | `/auth/profile` | 已登录 | 当前用户个人资料，包含展示名和手机号；历史密钥无法解密手机号时返回空字符串 |
+| PATCH | `/auth/profile` | 已登录 | 修改展示名、手机号或密码 |
 
 阶段 1 还提供健康检查与角色壳验证接口：`GET /health/live`、`GET /health/ready`、`GET /member/overview`、`GET /owner/overview`、`GET /admin/overview`。
 
-注册请求包含 `username`、`password`、`displayName`、`phone`。登录错误不区分“用户不存在”和“密码错误”。
+注册请求包含 `username`、`password`、`phone`。密码最短 8 位，必须同时包含英文大写、小写和数字；注册成功后系统自动生成 `新会员` 加 6 位随机数作为展示名。登录错误不区分“用户不存在”和“密码错误”。
+
+个人资料修改请求可包含 `displayName`、`phone`，手机号为空时可先不提交并由用户重新填写保存；修改密码时必须同时提供 `currentPassword`、`newPassword` 和确认新密码，且两次新密码必须一致；新密码沿用注册密码强度规则。
 
 ## 3. 会员资料与地址
 
 | 方法 | 路径 | 角色 | 说明 |
 |---|---|---|---|
-| GET | `/users/me` | 会员 | 查看自己的资料 |
-| PATCH | `/users/me` | 会员 | 修改姓名或手机号 |
+| GET | `/auth/profile` | 已登录 | 查看自己的资料 |
+| PATCH | `/auth/profile` | 已登录 | 修改展示名、手机号或密码 |
 | GET | `/users/me/addresses` | 会员 | 地址列表 |
 | POST | `/users/me/addresses` | 会员 | 新增地址 |
 | PATCH | `/users/me/addresses/:addressId` | 会员 | 修改自己的地址 |

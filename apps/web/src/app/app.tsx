@@ -1,11 +1,20 @@
-import { useEffect, useState } from "react";
-import { Navigate, NavLink, Route, Routes } from "react-router-dom";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { Navigate, NavLink, Route, Routes, useNavigate } from "react-router-dom";
 import type { AuthSessionData, RoleCode } from "@novamall/shared";
 
-import { getCurrentSession } from "../api/client.js";
+import { getCurrentSession, logout } from "../api/client.js";
 import { LoginPage } from "../pages/login-page.js";
 import { RegisterPage } from "../pages/register-page.js";
-import { RolePage } from "../pages/role-page.js";
+import { ProfilePage } from "../pages/profile-page.js";
+import {
+  AdminCategoryPanel,
+  AdminMerchantApplicationsPanel,
+  MemberCatalogPanel,
+  MemberMerchantApplicationPanel,
+  OwnerProductPanel,
+  OwnerShopPanel
+} from "../pages/role-page.js";
+import { BrandMark } from "../ui/brand-mark.js";
 
 type SessionState =
   | { status: "loading" }
@@ -18,9 +27,16 @@ export function App() {
       <Route path="/" element={<HomeRedirect />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
-      <Route path="/member" element={<ProtectedRoleRoute role="MEMBER" />} />
-      <Route path="/owner" element={<ProtectedRoleRoute role="OWNER" />} />
-      <Route path="/admin" element={<ProtectedRoleRoute role="ADMIN" />} />
+      <Route path="/member" element={<ProtectedRedirect role="MEMBER" to="/member/catalog" />} />
+      <Route path="/member/catalog" element={<ProtectedPage role="MEMBER" title="商品目录"><MemberCatalogPanel /></ProtectedPage>} />
+      <Route path="/member/applications" element={<ProtectedPage role="MEMBER" title="开店申请"><MemberMerchantApplicationPanel /></ProtectedPage>} />
+      <Route path="/owner" element={<ProtectedRedirect role="OWNER" to="/owner/products" />} />
+      <Route path="/owner/shop" element={<ProtectedPage role="OWNER" title="店铺资料"><OwnerShopPanel /></ProtectedPage>} />
+      <Route path="/owner/products" element={<ProtectedPage role="OWNER" title="商品管理"><OwnerProductPanel /></ProtectedPage>} />
+      <Route path="/admin" element={<ProtectedRedirect role="ADMIN" to="/admin/categories" />} />
+      <Route path="/admin/categories" element={<ProtectedPage role="ADMIN" title="分类管理"><AdminCategoryPanel /></ProtectedPage>} />
+      <Route path="/admin/applications" element={<ProtectedPage role="ADMIN" title="开店审核"><AdminMerchantApplicationsPanel /></ProtectedPage>} />
+      <Route path="/profile" element={<ProtectedProfilePage />} />
     </Routes>
   );
 }
@@ -36,7 +52,7 @@ function HomeRedirect() {
   return <Navigate to={defaultRoute(sessionState.session.user.roles)} replace />;
 }
 
-function ProtectedRoleRoute({ role }: { role: RoleCode }) {
+function ProtectedRedirect({ role, to }: { role: RoleCode; to: string }) {
   const sessionState = useSessionState();
   if (sessionState.status === "loading") {
     return <main className="route-status">正在确认登录状态…</main>;
@@ -47,7 +63,36 @@ function ProtectedRoleRoute({ role }: { role: RoleCode }) {
   if (!sessionState.session.user.roles.includes(role)) {
     return <Navigate to={defaultRoute(sessionState.session.user.roles)} replace />;
   }
-  return <RolePage role={role} />;
+  return <Navigate to={to} replace />;
+}
+
+function ProtectedPage({ role, title, children }: { role: RoleCode; title: string; children: ReactNode }) {
+  const sessionState = useSessionState();
+  if (sessionState.status === "loading") {
+    return <main className="route-status">正在确认登录状态…</main>;
+  }
+  if (sessionState.status === "anonymous") {
+    return <Navigate to="/login" replace />;
+  }
+  if (!sessionState.session.user.roles.includes(role)) {
+    return <Navigate to={defaultRoute(sessionState.session.user.roles)} replace />;
+  }
+  return <AppShell session={sessionState.session} title={title}>{children}</AppShell>;
+}
+
+function ProtectedProfilePage() {
+  const sessionState = useSessionState();
+  if (sessionState.status === "loading") {
+    return <main className="route-status">正在确认登录状态…</main>;
+  }
+  if (sessionState.status === "anonymous") {
+    return <Navigate to="/login" replace />;
+  }
+  return (
+    <AppShell session={sessionState.session} title="个人主页">
+      <ProfilePage csrfToken={sessionState.session.csrfToken} />
+    </AppShell>
+  );
 }
 
 function useSessionState(): SessionState {
@@ -76,20 +121,92 @@ function useSessionState(): SessionState {
 
 function defaultRoute(roles: RoleCode[]): string {
   if (roles.includes("ADMIN")) {
-    return "/admin";
+    return "/admin/categories";
   }
   if (roles.includes("OWNER")) {
-    return "/owner";
+    return "/owner/products";
   }
-  return "/member";
+  return "/member/catalog";
 }
 
 export function RoleNav({ role }: { role: RoleCode }) {
   return (
     <nav aria-label="角色导航">
-      {role === "MEMBER" ? <NavLink to="/member">会员首页</NavLink> : null}
-      {role === "OWNER" ? <NavLink to="/owner">店主后台</NavLink> : null}
-      {role === "ADMIN" ? <NavLink to="/admin">管理员后台</NavLink> : null}
+      {role === "MEMBER" ? (
+        <>
+          <NavLink to="/member/catalog">商品目录</NavLink>
+          <NavLink to="/member/applications">开店申请</NavLink>
+        </>
+      ) : null}
+      {role === "OWNER" ? (
+        <>
+          <NavLink to="/owner/products">商品管理</NavLink>
+          <NavLink to="/owner/shop">店铺资料</NavLink>
+        </>
+      ) : null}
+      {role === "ADMIN" ? (
+        <>
+          <NavLink to="/admin/categories">分类管理</NavLink>
+          <NavLink to="/admin/applications">开店审核</NavLink>
+        </>
+      ) : null}
     </nav>
   );
+}
+
+function AppShell({ session, title, children }: { session: AuthSessionData; title: string; children: ReactNode }) {
+  const navigate = useNavigate();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const primaryRole = useMemo(() => primaryRoleFor(session.user.roles), [session.user.roles]);
+
+  async function handleLogout(): Promise<void> {
+    await logout(session.csrfToken);
+    void navigate("/login", { replace: true });
+  }
+
+  return (
+    <main className="app-frame">
+      <aside className="side-nav">
+        <BrandMark />
+        <RoleNav role={primaryRole} />
+      </aside>
+      <section className="workspace" aria-labelledby="workspace-title">
+        <header className="top-bar">
+          <div>
+            <p>{primaryRole}</p>
+            <h1 id="workspace-title">{title}</h1>
+          </div>
+          <div className="profile-menu">
+            <button
+              className="avatar-button"
+              type="button"
+              aria-expanded={menuOpen}
+              aria-haspopup="menu"
+              onClick={() => { setMenuOpen((current) => !current); }}
+            >
+              <img src="/default-avatar.svg" alt="" />
+              <span>{session.user.displayName}</span>
+            </button>
+            {menuOpen ? (
+              <div className="profile-menu__panel" role="menu">
+                <NavLink role="menuitem" to="/profile">个人主页</NavLink>
+                <button role="menuitem" type="button" onClick={() => { void handleLogout(); }}>退出登录</button>
+              </div>
+            ) : null}
+          </div>
+        </header>
+        {children}
+      </section>
+    </main>
+  );
+}
+
+function primaryRoleFor(roles: RoleCode[]): RoleCode {
+  if (roles.includes("ADMIN")) {
+    return "ADMIN";
+  }
+  if (roles.includes("OWNER")) {
+    return "OWNER";
+  }
+  return "MEMBER";
 }

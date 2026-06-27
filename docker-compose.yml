@@ -10,6 +10,8 @@ services:
       TZ: Asia/Shanghai
     volumes:
       - mysql-data:/var/lib/mysql
+    ports:
+      - "3307:3306"
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-p${MYSQL_ROOT_PASSWORD:-novamall_root_dev_password}"]
       interval: 5s
@@ -58,6 +60,8 @@ services:
       SESSION_SECRET: ${SESSION_SECRET:-session-secret-with-at-least-32-characters}
       PHONE_AES_KEY: ${PHONE_AES_KEY:-phone-key-with-at-least-32-characters}
       WEB_ORIGIN: http://localhost:8080
+    volumes:
+      - uploads-data:/app/uploads
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://localhost:3000/api/v1/health/live').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 10s
@@ -76,3 +80,4 @@ services:
 
 volumes:
   mysql-data:
+  uploads-data:

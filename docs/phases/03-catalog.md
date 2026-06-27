@@ -214,7 +214,7 @@ CREATE TABLE product_price_history (
 
 ### 7.3 公开商城
 
-会员首页壳增加公开商品目录：
+会员商品目录位于 `/member/catalog`：
 
 - 启用分类筛选；
 - 关键词搜索；

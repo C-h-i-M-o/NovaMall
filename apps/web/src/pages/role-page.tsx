@@ -1,4 +1,4 @@
-import { Link } from "react-router-dom";
+import { Link, NavLink } from "react-router-dom";
 import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
 import type {
   Category,
@@ -13,7 +13,6 @@ import type {
 import { BrandMark } from "../ui/brand-mark.js";
 import { Button } from "../ui/button.js";
 import { StatusMessage } from "../ui/status-message.js";
-import { RoleNav } from "../app/app.js";
 import {
   ApiClientError,
   approveMerchantApplication,
@@ -43,14 +42,15 @@ const roleCopy: Record<RoleCode, { title: string; body: string }> = {
 
 interface RolePageProps {
   role: RoleCode;
+  csrfToken: string;
 }
 
-export function RolePage({ role }: RolePageProps) {
+export function RolePage({ role, csrfToken }: RolePageProps) {
   return (
     <main className="app-frame">
       <aside className="side-nav">
         <BrandMark />
-        <RoleNav role={role} />
+        <LegacyRoleNav role={role} />
       </aside>
       <section className="workspace" aria-labelledby="role-title">
         <div className="empty-state">
@@ -58,9 +58,19 @@ export function RolePage({ role }: RolePageProps) {
           <h1 id="role-title">{roleCopy[role].title}</h1>
           <p>{roleCopy[role].body}</p>
         </div>
-        <RoleStageTwoPanel role={role} />
+        <RoleStageTwoPanel role={role} csrfToken={csrfToken} />
       </section>
     </main>
+  );
+}
+
+function LegacyRoleNav({ role }: { role: RoleCode }) {
+  return (
+    <nav aria-label="角色导航">
+      {role === "MEMBER" ? <NavLink to="/member/catalog">会员首页</NavLink> : null}
+      {role === "OWNER" ? <NavLink to="/owner/products">店主后台</NavLink> : null}
+      {role === "ADMIN" ? <NavLink to="/admin/categories">管理员后台</NavLink> : null}
+    </nav>
   );
 }
 
@@ -89,7 +99,7 @@ function RoleStageTwoPanel({ role }: RolePageProps) {
   );
 }
 
-function MemberCatalogPanel() {
+export function MemberCatalogPanel() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [products, setProducts] = useState<PublicProduct[]>([]);
   const [keyword, setKeyword] = useState("");
@@ -164,7 +174,15 @@ function MemberCatalogPanel() {
       <div className="product-grid">
         {products.map((product) => (
           <article className="product-card" key={product.id}>
-            <img src={product.mainImagePath} alt={product.name} />
+            <img
+              src={productImageSrc(product.mainImagePath)}
+              alt={product.name}
+              onError={(event) => {
+                if (!event.currentTarget.src.endsWith(productPlaceholderSrc)) {
+                  event.currentTarget.src = productPlaceholderSrc;
+                }
+              }}
+            />
             <div>
               <strong>{product.name}</strong>
               <p>{product.description}</p>
@@ -180,7 +198,19 @@ function MemberCatalogPanel() {
   );
 }
 
-function MemberMerchantApplicationPanel() {
+const productPlaceholderSrc = "/product-placeholder.svg";
+
+function productImageSrc(path: string | null): string | undefined {
+  if (path === null) {
+    return productPlaceholderSrc;
+  }
+  if (path.startsWith("/uploads/")) {
+    return `/api/v1${path}`;
+  }
+  return path;
+}
+
+export function MemberMerchantApplicationPanel() {
   const [csrfToken, setCsrfToken] = useState("");
   const [application, setApplication] = useState<MerchantApplication | null | undefined>(undefined);
   const [loading, setLoading] = useState(false);
@@ -248,7 +278,7 @@ function MemberMerchantApplicationPanel() {
           <strong>{application.shopName}</strong>
           <p>{application.shopDescription}</p>
           {application.rejectReason !== null ? <StatusMessage>{application.rejectReason}</StatusMessage> : null}
-          {application.status === "APPROVED" ? <Link to="/owner">进入店主后台</Link> : null}
+          {application.status === "APPROVED" ? <Link to="/owner/shop">进入店主后台</Link> : null}
         </div>
       ) : null}
       {canSubmit ? (
@@ -272,7 +302,7 @@ function MemberMerchantApplicationPanel() {
   );
 }
 
-function AdminMerchantApplicationsPanel() {
+export function AdminMerchantApplicationsPanel() {
   const [csrfToken, setCsrfToken] = useState("");
   const [applications, setApplications] = useState<AdminMerchantApplication[]>([]);
   const [statusFilter, setStatusFilter] = useState<MerchantApplicationStatus | "ALL">("ALL");
@@ -431,7 +461,7 @@ function AdminMerchantApplicationsPanel() {
   );
 }
 
-function AdminCategoryPanel() {
+export function AdminCategoryPanel() {
   const [csrfToken, setCsrfToken] = useState("");
   const [categories, setCategories] = useState<Category[]>([]);
   const [message, setMessage] = useState("正在读取分类…");
@@ -523,7 +553,7 @@ function parseStatusFilter(value: string): MerchantApplicationStatus | "ALL" {
   return "ALL";
 }
 
-function OwnerShopPanel() {
+export function OwnerShopPanel() {
   const [shop, setShop] = useState<ShopSummary | null>(null);
   const [message, setMessage] = useState("正在读取店铺资料…");
 
@@ -564,7 +594,7 @@ function OwnerShopPanel() {
   );
 }
 
-function OwnerProductPanel() {
+export function OwnerProductPanel() {
   const [csrfToken, setCsrfToken] = useState("");
   const [categories, setCategories] = useState<Category[]>([]);
   const [products, setProducts] = useState<OwnerProduct[]>([]);

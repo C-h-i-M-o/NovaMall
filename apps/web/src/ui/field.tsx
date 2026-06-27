@@ -3,8 +3,8 @@ import { useId } from "react";
 
 interface FieldProps extends InputHTMLAttributes<HTMLInputElement> {
   label: string;
-  help?: string;
-  error?: string;
+  help?: string | undefined;
+  error?: string | undefined;
 }
 
 export function Field({ label, help, error, id, ...inputProps }: FieldProps) {
@@ -19,7 +19,7 @@ export function Field({ label, help, error, id, ...inputProps }: FieldProps) {
       <label htmlFor={inputId}>{label}</label>
       <input id={inputId} aria-invalid={error !== undefined} aria-describedby={describedBy} {...inputProps} />
       {help !== undefined ? <small id={helpId}>{help}</small> : null}
-      {error !== undefined ? <small id={errorId}>{error}</small> : null}
+      {error !== undefined ? <small id={errorId} className="field-error">{error}</small> : null}
     </div>
   );
 }

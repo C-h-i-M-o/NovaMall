@@ -12,11 +12,13 @@ import {
   paginatedCategoriesSchema,
   paginatedMerchantApplicationsSchema,
   paginatedOwnerProductsSchema,
+  privateProfileSchema,
   publicProductListSchema,
   publicProductSchema,
   registerInputSchema,
   shopSummarySchema,
   successResponseSchema,
+  updatePrivateProfileInputSchema,
   type AdminMerchantApplication,
   type AuthSessionData,
   type Category,
@@ -30,9 +32,11 @@ import {
   type PaginatedCategories,
   type PaginatedMerchantApplications,
   type PaginatedOwnerProducts,
+  type PrivateProfile,
   type PublicProductList,
   type RegisterInput,
-  type ShopSummary
+  type ShopSummary,
+  type UpdatePrivateProfileInput
 } from "@novamall/shared";
 import { z } from "zod";
 
@@ -59,9 +63,26 @@ export async function login(input: LoginInput, csrfToken: string): Promise<AuthS
   return writeAuth("/auth/login", loginInputSchema.parse(input), csrfToken);
 }
 
+export async function logout(csrfToken: string): Promise<void> {
+  await writeJson("/auth/logout", "POST", {}, csrfToken);
+}
+
 export async function getCurrentSession(): Promise<AuthSessionData> {
   const response = await request("/auth/session", { method: "GET" });
   return successResponseSchema(authSessionDataSchema).parse(response).data;
+}
+
+export async function getPrivateProfile(): Promise<PrivateProfile> {
+  const response = await request("/auth/profile", { method: "GET" });
+  return successResponseSchema(privateProfileSchema).parse(response).data;
+}
+
+export async function updatePrivateProfile(
+  input: UpdatePrivateProfileInput,
+  csrfToken: string
+): Promise<PrivateProfile> {
+  const response = await writeJson("/auth/profile", "PATCH", updatePrivateProfileInputSchema.parse(input), csrfToken);
+  return successResponseSchema(privateProfileSchema).parse(response).data;
 }
 
 export async function getMyMerchantApplication(): Promise<MerchantApplication | null> {
@@ -205,7 +226,7 @@ async function writeAuth(path: string, body: RegisterInput | LoginInput, csrfTok
   return successResponseSchema(authSessionDataSchema).parse(response).data;
 }
 
-async function writeJson(path: string, method: "POST" | "PUT", body: object, csrfToken: string): Promise<unknown> {
+async function writeJson(path: string, method: "POST" | "PUT" | "PATCH", body: object, csrfToken: string): Promise<unknown> {
   return request(path, {
     method,
     headers: {

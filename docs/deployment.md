@@ -10,12 +10,12 @@
 |---|---|---|
 | frontend | 构建 React 并由 Nginx 提供静态资源、反向代理 API/图片 | Web 端口 |
 | backend | Express API、Session、图片上传、数据库访问 | 仅 Compose 网络或调试端口 |
-| mysql | MySQL 8.4、业务数据、存储过程、触发器和视图 | 默认不向公网暴露 |
+| mysql | MySQL 8.4、业务数据、存储过程、触发器和视图 | 本地调试映射到 `127.0.0.1:3307` |
 
 ## 3. 持久化
 
 - `mysql-data`：MySQL 数据目录；
-- `uploads-data`：商品和店铺图片；
+- `uploads-data`：商品上传图片，挂载到后端容器 `/app/uploads`；
 - 数据库迁移脚本随应用版本进入镜像，不保存在数据卷中。
 
 ## 4. 环境变量
@@ -42,8 +42,9 @@ MAX_UPLOAD_BYTES
 ## 5. 网络与代理
 
 - 浏览器只访问 frontend；
-- Nginx 将 `/api` 和 `/uploads` 代理到 backend；
+- Nginx 将 `/api` 代理到 backend，前端商品图片通过 `/api/v1/uploads/...` 读取；
 - backend 通过内部 Compose 网络访问 mysql；
+- 本机数据库工具可通过 `127.0.0.1:3307` 连接主库，通过 `127.0.0.1:3308` 连接测试库；
 - 生产部署启用 HTTPS，确保 Cookie Secure 和数据库加密参数不会经过不可信网络。
 
 ## 6. 健康检查

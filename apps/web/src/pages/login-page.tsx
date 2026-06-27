@@ -65,12 +65,12 @@ export function LoginPage() {
 
 function defaultRoute(roles: string[]): string {
   if (roles.includes("ADMIN")) {
-    return "/admin";
+    return "/admin/categories";
   }
   if (roles.includes("OWNER")) {
-    return "/owner";
+    return "/owner/products";
   }
-  return "/member";
+  return "/member/catalog";
 }
 
 function loginErrorMessage(error: unknown): string {

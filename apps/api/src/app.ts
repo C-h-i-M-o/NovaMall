@@ -63,6 +63,7 @@ export function createApp(dependencies: AppDependencies): Express {
       );
     }
   }
+  app.use("/api/v1/uploads", express.static("uploads"));
   app.use("/uploads", express.static("uploads"));
   app.use("/api/v1/health", createHealthRouter(dependencies.healthRepository));
   app.use(errorHandler);

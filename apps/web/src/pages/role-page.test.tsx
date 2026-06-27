@@ -371,6 +371,35 @@ describe("RolePage 商户入驻区块", () => {
     expect(screen.getByText("高山苹果")).toBeInTheDocument();
     expect(screen.getByText("水果公开店")).toBeInTheDocument();
     expect(screen.getByText("¥19.90")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "高山苹果" })).toHaveAttribute(
+      "src",
+      "/api/v1/uploads/products/2026/06/apple.png"
+    );
+  });
+
+  it("公开商品图片加载失败时显示统一占位图", async () => {
+    mockedGetMyMerchantApplication.mockResolvedValue(null);
+    mockedListPublicProducts.mockResolvedValue({
+      data: [{
+        id: "10",
+        name: "高山苹果",
+        description: "现摘现发，适合家庭分享",
+        price: "19.90",
+        stock: 20,
+        mainImagePath: "/uploads/products/2026/06/missing.png",
+        category: { id: "1", name: "新鲜水果" },
+        shop: { id: "3", name: "水果公开店" },
+        createdAt: "2026-06-24T01:00:00.000Z",
+        updatedAt: "2026-06-24T01:00:00.000Z"
+      }],
+      meta: { page: 1, pageSize: 20, total: 1 }
+    });
+
+    renderRole("MEMBER");
+    const image = await screen.findByRole("img", { name: "高山苹果" });
+    fireEvent.error(image);
+
+    expect(image).toHaveAttribute("src", "/product-placeholder.svg");
   });
 
   it("管理员页面可创建分类", async () => {
@@ -450,10 +479,10 @@ describe("RolePage 商户入驻区块", () => {
   });
 });
 
-function renderRole(role: "MEMBER" | "OWNER" | "ADMIN"): void {
+function renderRole(role: "MEMBER" | "OWNER" | "ADMIN", csrfToken = "csrf-token"): void {
   render(
     <MemoryRouter>
-      <RolePage role={role} />
+      <RolePage role={role} csrfToken={csrfToken} />
     </MemoryRouter>
   );
 }

@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" role="img" aria-label="商品图片占位图">
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#fff7ed"/>
+      <stop offset="1" stop-color="#e0f2fe"/>
+    </linearGradient>
+    <linearGradient id="bag" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#0f766e"/>
+      <stop offset="1" stop-color="#d97706"/>
+    </linearGradient>
+  </defs>
+  <rect width="800" height="600" fill="url(#bg)"/>
+  <circle cx="160" cy="130" r="92" fill="#fde68a" opacity=".65"/>
+  <circle cx="650" cy="460" r="130" fill="#bae6fd" opacity=".65"/>
+  <g transform="translate(250 120)">
+    <path d="M72 150c0-68 55-123 123-123s123 55 123 123v20h-54v-20c0-38-31-69-69-69s-69 31-69 69v20H72z" fill="#134e4a"/>
+    <path d="M54 154h282l-24 270H78z" fill="url(#bag)"/>
+    <path d="M100 204h190l-15 166H115z" fill="#fff7ed" opacity=".92"/>
+    <path d="M143 292c28 36 80 36 108 0" fill="none" stroke="#0f766e" stroke-width="20" stroke-linecap="round"/>
+  </g>
+  <text x="400" y="535" text-anchor="middle" fill="#7c2d12" font-family="Arial, sans-serif" font-size="34" font-weight="700">NovaMall 商品图片</text>
+</svg>
