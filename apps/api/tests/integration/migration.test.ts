@@ -25,6 +25,14 @@ interface IndexRow extends RowDataPacket {
   INDEX_TYPE: string;
 }
 
+interface RoutineRow extends RowDataPacket {
+  ROUTINE_NAME: string;
+}
+
+interface ViewRow extends RowDataPacket {
+  TABLE_NAME: string;
+}
+
 describe("阶段 1 数据库迁移", () => {
   let pool: Pool;
 
@@ -45,10 +53,34 @@ describe("阶段 1 数据库迁移", () => {
             'audit_logs',
             'categories',
             'products',
-            'product_price_history'
+            'product_price_history',
+            'addresses',
+            'cart_items',
+            'master_orders',
+            'shop_orders',
+            'order_items',
+            'payments'
           )`
     );
     const tableNames = new Set(tables.map((row) => row.TABLE_NAME));
+    if (tableNames.has("payments")) {
+      await pool.query("DELETE FROM payments");
+    }
+    if (tableNames.has("order_items")) {
+      await pool.query("DELETE FROM order_items");
+    }
+    if (tableNames.has("shop_orders")) {
+      await pool.query("DELETE FROM shop_orders");
+    }
+    if (tableNames.has("master_orders")) {
+      await pool.query("DELETE FROM master_orders");
+    }
+    if (tableNames.has("cart_items")) {
+      await pool.query("DELETE FROM cart_items");
+    }
+    if (tableNames.has("addresses")) {
+      await pool.query("DELETE FROM addresses");
+    }
     if (tableNames.has("product_price_history")) {
       await pool.query("DELETE FROM product_price_history");
     }
@@ -98,6 +130,12 @@ describe("阶段 1 数据库迁移", () => {
       "categories",
       "products",
       "product_price_history",
+      "addresses",
+      "cart_items",
+      "master_orders",
+      "shop_orders",
+      "order_items",
+      "payments",
       "schema_migrations"
     ]));
   });
@@ -159,6 +197,63 @@ describe("阶段 1 数据库迁移", () => {
     expect(triggerRows.map((row) => row.TRIGGER_NAME)).toEqual([
       "trg_products_audit",
       "trg_products_price_history"
+    ]);
+  });
+
+  it("创建订单域表、索引、触发器、视图和结算存储过程", async () => {
+    const [indexRows] = await pool.query<IndexRow[]>(
+      `SELECT INDEX_NAME, INDEX_TYPE
+         FROM information_schema.STATISTICS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME IN ('cart_items', 'master_orders', 'shop_orders', 'order_items', 'audit_logs')`
+    );
+    const indexNames = indexRows.map((row) => row.INDEX_NAME);
+
+    expect(indexNames).toEqual(expect.arrayContaining([
+      "uq_cart_items_user_product",
+      "uq_master_orders_buyer_checkout",
+      "idx_master_orders_buyer_created",
+      "idx_shop_orders_shop_status_updated",
+      "idx_order_items_product_shop_order",
+      "idx_audit_logs_actor_created"
+    ]));
+
+    const [triggerRows] = await pool.query<TriggerRow[]>(
+      `SELECT TRIGGER_NAME
+         FROM information_schema.TRIGGERS
+        WHERE TRIGGER_SCHEMA = DATABASE()
+          AND TRIGGER_NAME IN ('trg_master_orders_audit', 'trg_shop_orders_audit', 'trg_user_roles_audit')
+        ORDER BY TRIGGER_NAME`
+    );
+
+    expect(triggerRows.map((row) => row.TRIGGER_NAME)).toEqual([
+      "trg_master_orders_audit",
+      "trg_shop_orders_audit",
+      "trg_user_roles_audit"
+    ]);
+
+    const [routineRows] = await pool.query<RoutineRow[]>(
+      `SELECT ROUTINE_NAME
+         FROM information_schema.ROUTINES
+        WHERE ROUTINE_SCHEMA = DATABASE()
+          AND ROUTINE_TYPE = 'PROCEDURE'
+          AND ROUTINE_NAME = 'sp_checkout_cart'`
+    );
+
+    expect(routineRows.map((row) => row.ROUTINE_NAME)).toEqual(["sp_checkout_cart"]);
+
+    const [viewRows] = await pool.query<ViewRow[]>(
+      `SELECT TABLE_NAME
+         FROM information_schema.VIEWS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME IN ('v_member_order_details', 'v_effective_product_sales', 'v_shop_sales_summary')
+        ORDER BY TABLE_NAME`
+    );
+
+    expect(viewRows.map((row) => row.TABLE_NAME)).toEqual([
+      "v_effective_product_sales",
+      "v_member_order_details",
+      "v_shop_sales_summary"
     ]);
   });
 

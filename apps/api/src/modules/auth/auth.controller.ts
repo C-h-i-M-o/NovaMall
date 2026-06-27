@@ -1,4 +1,5 @@
 import type { RequestHandler } from "express";
+import { randomUUID } from "node:crypto";
 
 import { generateCsrfToken } from "../../middleware/csrf.js";
 import { destroySession, regenerateSession, saveSession } from "./session.js";
@@ -12,6 +13,10 @@ export class AuthController {
       const csrfToken = request.session.csrfToken ?? generateCsrfToken();
       request.session.csrfToken = csrfToken;
       await saveSession(request);
+      response.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
+      response.setHeader("Pragma", "no-cache");
+      response.setHeader("Expires", "0");
+      response.setHeader("ETag", `"csrf-${randomUUID()}"`);
       response.json({ success: true, data: { csrfToken } });
     } catch (error) {
       next(error);
