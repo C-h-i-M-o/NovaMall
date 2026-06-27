@@ -9,7 +9,7 @@ export class AuthController {
 
   csrf: RequestHandler = async (request, response, next) => {
     try {
-      const csrfToken = generateCsrfToken();
+      const csrfToken = request.session.csrfToken ?? generateCsrfToken();
       request.session.csrfToken = csrfToken;
       await saveSession(request);
       response.json({ success: true, data: { csrfToken } });
@@ -57,6 +57,38 @@ export class AuthController {
       return;
     }
     response.json({ success: true, data: this.service.sessionData(user, csrfToken) });
+  };
+
+  privateProfile: RequestHandler = async (request, response, next) => {
+    try {
+      const user = request.currentUser;
+      if (user === undefined) {
+        response.status(401).json({
+          success: false,
+          error: { code: "AUTH_REQUIRED", message: "请先登录", requestId: request.requestId }
+        });
+        return;
+      }
+      response.json({ success: true, data: await this.service.getPrivateProfile(user.id) });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  updatePrivateProfile: RequestHandler = async (request, response, next) => {
+    try {
+      const user = request.currentUser;
+      if (user === undefined) {
+        response.status(401).json({
+          success: false,
+          error: { code: "AUTH_REQUIRED", message: "请先登录", requestId: request.requestId }
+        });
+        return;
+      }
+      response.json({ success: true, data: await this.service.updatePrivateProfile(user, request.body) });
+    } catch (error) {
+      next(error);
+    }
   };
 
   logout: RequestHandler = async (request, response, next) => {

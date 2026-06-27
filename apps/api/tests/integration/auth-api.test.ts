@@ -37,6 +37,24 @@ function readCsrf(body: unknown): string {
   throw new Error("响应中缺少 csrfToken");
 }
 
+function readDisplayName(body: unknown): string {
+  if (
+    typeof body === "object"
+    && body !== null
+    && "data" in body
+    && typeof body.data === "object"
+    && body.data !== null
+    && "user" in body.data
+    && typeof body.data.user === "object"
+    && body.data.user !== null
+    && "displayName" in body.data.user
+    && typeof body.data.user.displayName === "string"
+  ) {
+    return body.data.user.displayName;
+  }
+  throw new Error("响应中缺少 displayName");
+}
+
 describe("认证 API", () => {
   beforeEach(async () => {
     await pool.query("DELETE FROM audit_logs");
@@ -62,7 +80,6 @@ describe("认证 API", () => {
       .send({
         username: "api_member",
         password: "StrongPass123!",
-        displayName: "接口会员",
         phone: "13800138000"
       })
       .expect(201);
@@ -75,12 +92,12 @@ describe("认证 API", () => {
         data: {
           user: {
             username: "api_member",
-            displayName: "接口会员",
             roles: ["MEMBER"]
           },
           csrfToken: rotatedCsrfToken
         }
       });
+      expect(readDisplayName(response.body)).toMatch(/^新会员\d{6}$/);
     });
 
     await agent.get("/api/v1/member/overview").expect(200, {
@@ -109,7 +126,6 @@ describe("认证 API", () => {
       .send({
         username: "logout_member",
         password: "StrongPass123!",
-        displayName: "退出会员",
         phone: "13900139000"
       })
       .expect(201);
@@ -117,6 +133,115 @@ describe("认证 API", () => {
 
     await agent.post("/api/v1/auth/logout").set("X-CSRF-Token", rotatedCsrfToken).expect(200);
     await agent.get("/api/v1/auth/session").expect(401);
+  });
+
+  it("登录用户可以查看并修改个人资料", async () => {
+    const agent = request.agent(app);
+    const csrfToken = readCsrf((await agent.get("/api/v1/auth/csrf").expect(200)).body);
+    const registerResponse = await agent
+      .post("/api/v1/auth/register")
+      .set("X-CSRF-Token", csrfToken)
+      .send({
+        username: "profile_member",
+        password: "StrongPass123!",
+        phone: "13600136000"
+      })
+      .expect(201);
+    const rotatedCsrfToken = readCsrf(registerResponse.body);
+
+    await agent.get("/api/v1/auth/profile").expect(200).expect((response) => {
+      expect(response.body).toMatchObject({
+        success: true,
+        data: {
+          username: "profile_member",
+          phone: "13600136000",
+          roles: ["MEMBER"]
+        }
+      });
+    });
+
+    await agent
+      .patch("/api/v1/auth/profile")
+      .set("X-CSRF-Token", rotatedCsrfToken)
+      .send({
+        displayName: "资料会员",
+        phone: "13500135000",
+        currentPassword: "StrongPass123!",
+        newPassword: "NextPass123"
+      })
+      .expect(200)
+      .expect((response) => {
+        expect(response.body).toMatchObject({
+          success: true,
+          data: {
+            username: "profile_member",
+            displayName: "资料会员",
+            phone: "13500135000",
+            roles: ["MEMBER"]
+          }
+        });
+      });
+
+    await agent.post("/api/v1/auth/logout").set("X-CSRF-Token", rotatedCsrfToken).expect(200);
+    const nextCsrfToken = readCsrf((await agent.get("/api/v1/auth/csrf").expect(200)).body);
+    await agent
+      .post("/api/v1/auth/login")
+      .set("X-CSRF-Token", nextCsrfToken)
+      .send({ username: "profile_member", password: "NextPass123" })
+      .expect(200);
+  });
+
+  it("旧手机号密钥无法解密时仍返回个人资料", async () => {
+    const legacyRepository = new AuthRepository(pool, "legacy-phone-key-with-at-least-32-chars");
+    await legacyRepository.createMember({
+      username: "legacy_profile_member",
+      passwordHash: await hashPassword("StrongPass123!"),
+      displayName: "旧资料会员",
+      phone: "13600136000"
+    });
+
+    const agent = request.agent(app);
+    const csrfToken = readCsrf((await agent.get("/api/v1/auth/csrf").expect(200)).body);
+    await agent
+      .post("/api/v1/auth/login")
+      .set("X-CSRF-Token", csrfToken)
+      .send({ username: "legacy_profile_member", password: "StrongPass123!" })
+      .expect(200);
+
+    await agent.get("/api/v1/auth/profile").expect(200).expect((response) => {
+      expect(response.body).toMatchObject({
+        success: true,
+        data: {
+          username: "legacy_profile_member",
+          displayName: "旧资料会员",
+          phone: "",
+          roles: ["MEMBER"]
+        }
+      });
+    });
+  });
+
+  it("修改密码时当前密码错误会被拒绝", async () => {
+    const agent = request.agent(app);
+    const csrfToken = readCsrf((await agent.get("/api/v1/auth/csrf").expect(200)).body);
+    const registerResponse = await agent
+      .post("/api/v1/auth/register")
+      .set("X-CSRF-Token", csrfToken)
+      .send({
+        username: "profile_password_member",
+        password: "StrongPass123!",
+        phone: "13400134000"
+      })
+      .expect(201);
+
+    await agent
+      .patch("/api/v1/auth/profile")
+      .set("X-CSRF-Token", readCsrf(registerResponse.body))
+      .send({
+        currentPassword: "WrongPass123!",
+        newPassword: "NextPass123"
+      })
+      .expect(401);
   });
 
   it("店主账号登录后只能进入 OWNER 壳", async () => {

@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -7,8 +7,13 @@ import {
   fetchCsrf,
   getCurrentSession,
   getMyMerchantApplication,
+  getPrivateProfile,
+  listPublicCategories,
+  listPublicProducts,
   login,
-  register
+  logout,
+  register,
+  updatePrivateProfile
 } from "../api/client.js";
 import { App } from "./app.js";
 
@@ -22,26 +27,51 @@ vi.mock("../api/client.js", () => ({
   fetchCsrf: vi.fn(),
   getCurrentSession: vi.fn(),
   getMyMerchantApplication: vi.fn(),
+  getPrivateProfile: vi.fn(),
   getOwnerShop: vi.fn(),
+  listAdminCategories: vi.fn(),
+  listOwnerProducts: vi.fn(),
+  listPublicCategories: vi.fn(),
+  listPublicProducts: vi.fn(),
+  createCategory: vi.fn(),
+  createOwnerProduct: vi.fn(),
+  publishOwnerProduct: vi.fn(),
+  uploadProductImage: vi.fn(),
   listMerchantApplications: vi.fn(),
   submitMerchantApplication: vi.fn(),
   approveMerchantApplication: vi.fn(),
   rejectMerchantApplication: vi.fn(),
   login: vi.fn(),
-  register: vi.fn()
+  logout: vi.fn(),
+  register: vi.fn(),
+  updatePrivateProfile: vi.fn()
 }));
 
 const mockedFetchCsrf = vi.mocked(fetchCsrf);
 const mockedGetCurrentSession = vi.mocked(getCurrentSession);
 const mockedGetMyMerchantApplication = vi.mocked(getMyMerchantApplication);
+const mockedGetPrivateProfile = vi.mocked(getPrivateProfile);
+const mockedListPublicCategories = vi.mocked(listPublicCategories);
+const mockedListPublicProducts = vi.mocked(listPublicProducts);
 const mockedLogin = vi.mocked(login);
+const mockedLogout = vi.mocked(logout);
 const mockedRegister = vi.mocked(register);
+const mockedUpdatePrivateProfile = vi.mocked(updatePrivateProfile);
 
 describe("App 路由守卫", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockedFetchCsrf.mockResolvedValue("csrf-token");
     mockedGetMyMerchantApplication.mockResolvedValue(null);
+    mockedGetPrivateProfile.mockResolvedValue({
+      id: "1",
+      username: "member01",
+      displayName: "会员一",
+      phone: "13800138000",
+      roles: ["MEMBER"]
+    });
+    mockedListPublicCategories.mockResolvedValue([]);
+    mockedListPublicProducts.mockResolvedValue({ data: [], meta: { page: 1, pageSize: 20, total: 0 } });
   });
 
   afterEach(() => {
@@ -61,14 +91,14 @@ describe("App 路由守卫", () => {
 
     renderApp("/");
 
-    expect(await screen.findByRole("heading", { name: "开店申请" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 2, name: "商品目录" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "登录星选" })).not.toBeInTheDocument();
   });
 
   it("未登录访问会员页时回到登录页且不读取开店申请", async () => {
     mockedGetCurrentSession.mockRejectedValue(new Error("未登录"));
 
-    renderApp("/member");
+    renderApp("/member/applications");
 
     expect(await screen.findByRole("heading", { name: "登录星选" })).toBeInTheDocument();
     expect(mockedGetMyMerchantApplication).not.toHaveBeenCalled();
@@ -94,14 +124,276 @@ describe("App 路由守卫", () => {
     renderApp("/register");
     await screen.findByText("安全会话已准备好。");
     fireFormInput("用户名", "member01");
-    fireFormInput("展示名", "会员一");
     fireFormInput("手机号", "13800138000");
-    fireFormInput("密码", "Password12345");
+    fireFormInput("密码", "Password123");
+    fireFormInput("确认密码", "Password123");
     fireEvent.click(screen.getByRole("button", { name: "注册并进入会员首页" }));
 
     expect(await screen.findByText("用户名已被占用，请换一个再试。")).toBeInTheDocument();
     expect(screen.queryByText(/request-789/)).not.toBeInTheDocument();
     expect(screen.queryByText(/用户名已存在/)).not.toBeInTheDocument();
+  });
+
+  it("注册页在服务端返回用户名重复文案时不退回通用失败提示", async () => {
+    mockedRegister.mockRejectedValue(new ApiClientError("INTERNAL_ERROR", "用户名已被使用", "request-789"));
+
+    renderApp("/register");
+    await screen.findByText("安全会话已准备好。");
+    fireFormInput("用户名", "member01");
+    fireFormInput("手机号", "13800138000");
+    fireFormInput("密码", "Password123");
+    fireFormInput("确认密码", "Password123");
+    fireEvent.click(screen.getByRole("button", { name: "注册并进入会员首页" }));
+
+    expect(await screen.findByText("用户名已被占用，请换一个再试。")).toBeInTheDocument();
+    expect(screen.queryByText("注册失败，请稍后重试。")).not.toBeInTheDocument();
+    expect(screen.queryByText(/request-789/)).not.toBeInTheDocument();
+  });
+
+  it("注册页不要求展示名，提交时只发送账号、手机号和密码", async () => {
+    mockedRegister.mockResolvedValue({
+      user: {
+        id: "1",
+        username: "member01",
+        displayName: "新会员123456",
+        roles: ["MEMBER"]
+      },
+      csrfToken: "rotated-token"
+    });
+
+    renderApp("/register");
+    await screen.findByText("安全会话已准备好。");
+    expect(screen.queryByLabelText("展示名")).not.toBeInTheDocument();
+    fireFormInput("用户名", "member01");
+    fireFormInput("手机号", "13800138000");
+    fireFormInput("密码", "Password123");
+    fireFormInput("确认密码", "Password123");
+    fireEvent.click(screen.getByRole("button", { name: "注册并进入会员首页" }));
+
+    await waitFor(() => {
+      expect(mockedRegister).toHaveBeenCalledWith({
+        username: "member01",
+        phone: "13800138000",
+        password: "Password123"
+      }, "csrf-token");
+    });
+  });
+
+  it("注册页要求两次密码一致且密码包含大小写和数字", async () => {
+    renderApp("/register");
+    await screen.findByText("安全会话已准备好。");
+    fireFormInput("用户名", "member01");
+    fireFormInput("手机号", "13800138000");
+    fireFormInput("密码", "password");
+    fireFormInput("确认密码", "Password123");
+    fireEvent.click(screen.getByRole("button", { name: "注册并进入会员首页" }));
+
+    expect(mockedRegister).not.toHaveBeenCalled();
+    expect(screen.getByRole("status")).toHaveTextContent("两次输入的密码不一致。");
+
+    fireFormInput("确认密码", "password");
+    fireEvent.click(screen.getByRole("button", { name: "注册并进入会员首页" }));
+
+    expect(mockedRegister).not.toHaveBeenCalled();
+    expect(screen.getByRole("status")).toHaveTextContent("密码至少 8 位，并包含英文大写、小写和数字。");
+  });
+
+  it("注册页第一遍密码输入结束后立即标红提示弱密码", async () => {
+    renderApp("/register");
+    await screen.findByText("安全会话已准备好。");
+    const passwordInput = screen.getByLabelText("密码");
+
+    fireEvent.change(passwordInput, { target: { value: "password" } });
+    fireEvent.blur(passwordInput);
+
+    expect(passwordInput).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByText("密码至少 8 位，并包含英文大写、小写和数字。")).toHaveClass("field-error");
+
+    fireEvent.change(passwordInput, { target: { value: "Password123" } });
+
+    expect(passwordInput).toHaveAttribute("aria-invalid", "false");
+    expect(screen.queryByText("密码至少 8 位，并包含英文大写、小写和数字。")).not.toBeInTheDocument();
+  });
+
+  it("注册页确认密码输入结束后立即标红提示两次密码不同", async () => {
+    renderApp("/register");
+    await screen.findByText("安全会话已准备好。");
+    const confirmedPasswordInput = screen.getByLabelText("确认密码");
+
+    fireFormInput("密码", "Password123");
+    fireEvent.change(confirmedPasswordInput, { target: { value: "Password456" } });
+    fireEvent.blur(confirmedPasswordInput);
+
+    expect(confirmedPasswordInput).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByText("两次输入的密码不一致。")).toHaveClass("field-error");
+
+    fireEvent.change(confirmedPasswordInput, { target: { value: "Password123" } });
+
+    expect(confirmedPasswordInput).toHaveAttribute("aria-invalid", "false");
+    expect(screen.queryByText("两次输入的密码不一致。")).not.toBeInTheDocument();
+  });
+
+  it("侧边栏切换到独立功能路由", async () => {
+    mockedGetCurrentSession.mockResolvedValue({
+      user: {
+        id: "1",
+        username: "member01",
+        displayName: "会员一",
+        roles: ["MEMBER"]
+      },
+      csrfToken: "csrf-token"
+    });
+
+    renderApp("/member/catalog");
+    expect(await screen.findByRole("heading", { level: 2, name: "商品目录" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("link", { name: "开店申请" }));
+
+    expect(await screen.findByRole("heading", { level: 2, name: "开店申请" })).toBeInTheDocument();
+  });
+
+  it("头像菜单仅提供个人主页和退出登录", async () => {
+    mockedGetCurrentSession.mockResolvedValue({
+      user: {
+        id: "1",
+        username: "member01",
+        displayName: "会员一",
+        roles: ["MEMBER"]
+      },
+      csrfToken: "csrf-token"
+    });
+    mockedLogout.mockResolvedValue(undefined);
+
+    renderApp("/member/catalog");
+    expect(await screen.findByRole("heading", { level: 2, name: "商品目录" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "会员一" }));
+    expect(screen.getByRole("menuitem", { name: "个人主页" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("menuitem", { name: "退出登录" }));
+
+    await waitFor(() => {
+      expect(mockedLogout).toHaveBeenCalledWith("csrf-token");
+    });
+    expect(await screen.findByRole("heading", { name: "登录星选" })).toBeInTheDocument();
+  });
+
+  it("个人主页可以修改展示名、手机号和密码", async () => {
+    mockedGetCurrentSession.mockResolvedValue({
+      user: {
+        id: "1",
+        username: "member01",
+        displayName: "会员一",
+        roles: ["MEMBER"]
+      },
+      csrfToken: "csrf-token"
+    });
+    mockedGetPrivateProfile.mockResolvedValue({
+      id: "1",
+      username: "member01",
+      displayName: "会员一",
+      phone: "13800138000",
+      roles: ["MEMBER"]
+    });
+    mockedUpdatePrivateProfile.mockResolvedValue({
+      id: "1",
+      username: "member01",
+      displayName: "会员二",
+      phone: "13900139000",
+      roles: ["MEMBER"]
+    });
+
+    renderApp("/profile");
+    expect(await screen.findByRole("heading", { level: 2, name: "个人主页" })).toBeInTheDocument();
+    fireFormInput("展示名", "会员二");
+    fireFormInput("手机号", "13900139000");
+    fireFormInput("当前密码", "StrongPass123!");
+    fireFormInput("新密码", "NextPass123");
+    fireFormInput("确认新密码", "NextPass123");
+    fireEvent.click(screen.getByRole("button", { name: "保存个人信息" }));
+
+    await waitFor(() => {
+      expect(mockedUpdatePrivateProfile).toHaveBeenCalledWith({
+        displayName: "会员二",
+        phone: "13900139000",
+        currentPassword: "StrongPass123!",
+        newPassword: "NextPass123"
+      }, "csrf-token");
+    });
+    expect(await screen.findByText("个人信息已更新。")).toBeInTheDocument();
+  });
+
+  it("个人主页允许旧资料手机号为空并在保存时不提交空手机号", async () => {
+    mockedGetCurrentSession.mockResolvedValue({
+      user: {
+        id: "1",
+        username: "member01",
+        displayName: "会员一",
+        roles: ["MEMBER"]
+      },
+      csrfToken: "csrf-token"
+    });
+    mockedGetPrivateProfile.mockResolvedValue({
+      id: "1",
+      username: "member01",
+      displayName: "会员一",
+      phone: "",
+      roles: ["MEMBER"]
+    });
+    mockedUpdatePrivateProfile.mockResolvedValue({
+      id: "1",
+      username: "member01",
+      displayName: "会员二",
+      phone: "",
+      roles: ["MEMBER"]
+    });
+
+    renderApp("/profile");
+    expect(await screen.findByRole("heading", { level: 2, name: "个人主页" })).toBeInTheDocument();
+    expect(screen.getByLabelText("手机号")).toHaveValue("");
+    fireFormInput("展示名", "会员二");
+    fireEvent.click(screen.getByRole("button", { name: "保存个人信息" }));
+
+    await waitFor(() => {
+      expect(mockedUpdatePrivateProfile).toHaveBeenCalledWith({
+        displayName: "会员二"
+      }, "csrf-token");
+    });
+  });
+
+  it("个人主页修改密码时校验新密码强度和确认密码一致", async () => {
+    mockedGetCurrentSession.mockResolvedValue({
+      user: {
+        id: "1",
+        username: "member01",
+        displayName: "会员一",
+        roles: ["MEMBER"]
+      },
+      csrfToken: "csrf-token"
+    });
+    mockedGetPrivateProfile.mockResolvedValue({
+      id: "1",
+      username: "member01",
+      displayName: "会员一",
+      phone: "13800138000",
+      roles: ["MEMBER"]
+    });
+
+    renderApp("/profile");
+    expect(await screen.findByRole("heading", { level: 2, name: "个人主页" })).toBeInTheDocument();
+    const newPasswordInput = screen.getByLabelText("新密码");
+    const confirmedPasswordInput = screen.getByLabelText("确认新密码");
+
+    fireEvent.change(newPasswordInput, { target: { value: "weakpass" } });
+    fireEvent.blur(newPasswordInput);
+    expect(newPasswordInput).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByText("密码至少 8 位，并包含英文大写、小写和数字。")).toHaveClass("field-error");
+
+    fireEvent.change(newPasswordInput, { target: { value: "NextPass123" } });
+    fireEvent.change(confirmedPasswordInput, { target: { value: "OtherPass123" } });
+    fireEvent.blur(confirmedPasswordInput);
+    expect(confirmedPasswordInput).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByText("两次输入的密码不一致。")).toHaveClass("field-error");
+
+    fireEvent.click(screen.getByRole("button", { name: "保存个人信息" }));
+    expect(mockedUpdatePrivateProfile).not.toHaveBeenCalled();
   });
 });
 

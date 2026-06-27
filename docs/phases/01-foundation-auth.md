@@ -117,11 +117,13 @@ Session Store 使用 MySQL 表保存 Session ID、过期时间和序列化数据
 | POST | `/auth/login` | 公开 + CSRF bootstrap | 校验凭据并轮换 Session |
 | POST | `/auth/logout` | 已登录 + CSRF | 销毁服务端 Session |
 | GET | `/auth/session` | 已登录 | 返回当前用户、角色和 CSRF Token |
+| GET | `/auth/profile` | 已登录 | 返回当前用户个人资料 |
+| PATCH | `/auth/profile` | 已登录 + CSRF | 修改展示名、手机号或密码 |
 | GET | `/member/overview` | MEMBER | 会员壳验证接口 |
 | GET | `/owner/overview` | OWNER | 店主壳验证接口 |
 | GET | `/admin/overview` | ADMIN | 管理员壳验证接口 |
 
-注册输入：`username`、`password`、`displayName`、`phone`。登录失败统一返回 `INVALID_CREDENTIALS`，不泄露用户名是否存在。
+注册输入：`username`、`password`、`phone`。密码最短 8 位，必须同时包含英文大写、小写和数字；展示名由系统生成，格式为 `新会员` 加 6 位随机数。个人资料页允许用户修改展示名、手机号和密码；历史密钥无法解密手机号时资料接口返回空字符串，用户可重新填写保存；修改密码必须校验当前密码，并要求两次新密码一致。登录失败统一返回 `INVALID_CREDENTIALS`，不泄露用户名是否存在。
 
 ### CSRF bootstrap
 

@@ -12,6 +12,12 @@ interface CreateMemberInput {
   phone: string;
 }
 
+interface UpdatePrivateProfileInput {
+  displayName?: string;
+  phone?: string;
+  passwordHash?: string;
+}
+
 interface AuthUserRecord {
   id: string;
   username: string;
@@ -84,7 +90,7 @@ export class AuthRepository {
          CAST(u.id AS CHAR) AS id,
          u.username,
          u.display_name,
-         CAST(AES_DECRYPT(u.phone_cipher, ?, u.phone_iv) AS CHAR CHARACTER SET utf8mb4) AS phone,
+         COALESCE(CAST(AES_DECRYPT(u.phone_cipher, ?, u.phone_iv) AS CHAR CHARACTER SET utf8mb4), '') AS phone,
          GROUP_CONCAT(r.code ORDER BY r.code SEPARATOR ',') AS roles
        FROM users u
        JOIN user_roles ur ON ur.user_id = u.id
@@ -105,6 +111,31 @@ export class AuthRepository {
       phone: row.phone,
       roles: parseRoles(row.roles)
     };
+  }
+
+  async updatePrivateProfile(id: string, input: UpdatePrivateProfileInput): Promise<PrivateProfileRecord | null> {
+    const fragments: string[] = [];
+    const values: Array<string | Buffer> = [];
+    if (input.displayName !== undefined) {
+      fragments.push("display_name = ?");
+      values.push(input.displayName);
+    }
+    if (input.phone !== undefined) {
+      const phoneIv = randomBytes(16);
+      fragments.push("phone_cipher = AES_ENCRYPT(?, ?, ?)", "phone_iv = ?");
+      values.push(input.phone, this.phoneAesKey, phoneIv, phoneIv);
+    }
+    if (input.passwordHash !== undefined) {
+      fragments.push("password_hash = ?");
+      values.push(input.passwordHash);
+    }
+    if (fragments.length > 0) {
+      await this.pool.execute(
+        `UPDATE users SET ${fragments.join(", ")} WHERE id = ?`,
+        [...values, id]
+      );
+    }
+    return this.findPrivateProfileById(id);
   }
 
   async findAuthUserById(id: string): Promise<AuthUserRecord | null> {

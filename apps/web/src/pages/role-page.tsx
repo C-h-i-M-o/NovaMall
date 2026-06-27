@@ -1,25 +1,35 @@
-import { Link } from "react-router-dom";
+import { Link, NavLink } from "react-router-dom";
 import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
 import type {
+  Category,
   AdminMerchantApplication,
   MerchantApplication,
   MerchantApplicationStatus,
+  OwnerProduct,
+  PublicProduct,
   ShopSummary
 } from "@novamall/shared";
 
 import { BrandMark } from "../ui/brand-mark.js";
 import { Button } from "../ui/button.js";
 import { StatusMessage } from "../ui/status-message.js";
-import { RoleNav } from "../app/app.js";
 import {
   ApiClientError,
   approveMerchantApplication,
+  createCategory,
+  createOwnerProduct,
   fetchCsrf,
   getMyMerchantApplication,
   getOwnerShop,
+  listAdminCategories,
+  listOwnerProducts,
+  listPublicCategories,
+  listPublicProducts,
   listMerchantApplications,
+  publishOwnerProduct,
   rejectMerchantApplication,
-  submitMerchantApplication
+  submitMerchantApplication,
+  uploadProductImage
 } from "../api/client.js";
 
 type RoleCode = "MEMBER" | "OWNER" | "ADMIN";
@@ -32,14 +42,15 @@ const roleCopy: Record<RoleCode, { title: string; body: string }> = {
 
 interface RolePageProps {
   role: RoleCode;
+  csrfToken: string;
 }
 
-export function RolePage({ role }: RolePageProps) {
+export function RolePage({ role, csrfToken }: RolePageProps) {
   return (
     <main className="app-frame">
       <aside className="side-nav">
         <BrandMark />
-        <RoleNav role={role} />
+        <LegacyRoleNav role={role} />
       </aside>
       <section className="workspace" aria-labelledby="role-title">
         <div className="empty-state">
@@ -47,23 +58,159 @@ export function RolePage({ role }: RolePageProps) {
           <h1 id="role-title">{roleCopy[role].title}</h1>
           <p>{roleCopy[role].body}</p>
         </div>
-        <RoleStageTwoPanel role={role} />
+        <RoleStageTwoPanel role={role} csrfToken={csrfToken} />
       </section>
     </main>
   );
 }
 
-function RoleStageTwoPanel({ role }: RolePageProps) {
-  if (role === "MEMBER") {
-    return <MemberMerchantApplicationPanel />;
-  }
-  if (role === "ADMIN") {
-    return <AdminMerchantApplicationsPanel />;
-  }
-  return <OwnerShopPanel />;
+function LegacyRoleNav({ role }: { role: RoleCode }) {
+  return (
+    <nav aria-label="角色导航">
+      {role === "MEMBER" ? <NavLink to="/member/catalog">会员首页</NavLink> : null}
+      {role === "OWNER" ? <NavLink to="/owner/products">店主后台</NavLink> : null}
+      {role === "ADMIN" ? <NavLink to="/admin/categories">管理员后台</NavLink> : null}
+    </nav>
+  );
 }
 
-function MemberMerchantApplicationPanel() {
+function RoleStageTwoPanel({ role }: RolePageProps) {
+  if (role === "MEMBER") {
+    return (
+      <>
+        <MemberCatalogPanel />
+        <MemberMerchantApplicationPanel />
+      </>
+    );
+  }
+  if (role === "ADMIN") {
+    return (
+      <>
+        <AdminCategoryPanel />
+        <AdminMerchantApplicationsPanel />
+      </>
+    );
+  }
+  return (
+    <>
+      <OwnerShopPanel />
+      <OwnerProductPanel />
+    </>
+  );
+}
+
+export function MemberCatalogPanel() {
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [products, setProducts] = useState<PublicProduct[]>([]);
+  const [keyword, setKeyword] = useState("");
+  const [categoryId, setCategoryId] = useState("");
+  const [message, setMessage] = useState("正在读取商品目录…");
+
+  async function refresh(nextKeyword = keyword, nextCategoryId = categoryId): Promise<void> {
+    try {
+      const [nextCategories, productResult] = await Promise.all([
+        listPublicCategories(),
+        listPublicProducts({
+          keyword: nextKeyword,
+          categoryId: nextCategoryId,
+          sort: nextKeyword.trim().length > 0 ? "relevance" : "newest"
+        })
+      ]);
+      setCategories(nextCategories);
+      setProducts(productResult.data);
+      setMessage(productResult.meta.total === 0 ? "暂无可展示商品。" : `共 ${productResult.meta.total} 件商品。`);
+    } catch (error) {
+      setMessage(errorMessage(error, "暂时无法读取商品目录。"));
+    }
+  }
+
+  useEffect(() => {
+    let alive = true;
+    void Promise.all([
+      listPublicCategories(),
+      listPublicProducts({ sort: "newest" })
+    ])
+      .then(([nextCategories, productResult]) => {
+        if (alive) {
+          setCategories(nextCategories);
+          setProducts(productResult.data);
+          setMessage(productResult.meta.total === 0 ? "暂无可展示商品。" : `共 ${productResult.meta.total} 件商品。`);
+        }
+      })
+      .catch((error) => {
+        if (alive) {
+          setMessage(errorMessage(error, "暂时无法读取商品目录。"));
+        }
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  function submitSearch(event: FormEvent<HTMLFormElement>): void {
+    event.preventDefault();
+    void refresh(keyword, categoryId);
+  }
+
+  return (
+    <section className="stage-panel" aria-labelledby="catalog-title">
+      <div className="section-heading">
+        <h2 id="catalog-title">商品目录</h2>
+      </div>
+      <form className="catalog-toolbar" onSubmit={submitSearch}>
+        <label className="field">
+          <span>商品关键词</span>
+          <input aria-label="商品关键词" value={keyword} onChange={(event) => { setKeyword(event.target.value); }} placeholder="搜索苹果、咖啡、礼盒" />
+        </label>
+        <label className="field">
+          <span>商品分类</span>
+          <select aria-label="商品分类" value={categoryId} onChange={(event) => { setCategoryId(event.target.value); }}>
+            <option value="">全部分类</option>
+            {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+          </select>
+        </label>
+        <Button type="submit">搜索商品</Button>
+      </form>
+      <div className="product-grid">
+        {products.map((product) => (
+          <article className="product-card" key={product.id}>
+            <img
+              src={productImageSrc(product.mainImagePath)}
+              alt={product.name}
+              onError={(event) => {
+                if (!event.currentTarget.src.endsWith(productPlaceholderSrc)) {
+                  event.currentTarget.src = productPlaceholderSrc;
+                }
+              }}
+            />
+            <div>
+              <strong>{product.name}</strong>
+              <p>{product.description}</p>
+              <span>{product.shop.name}</span>
+              <span>{product.category.name}</span>
+              <b>¥{product.price}</b>
+            </div>
+          </article>
+        ))}
+      </div>
+      <StatusMessage>{message}</StatusMessage>
+    </section>
+  );
+}
+
+const productPlaceholderSrc = "/product-placeholder.svg";
+
+function productImageSrc(path: string | null): string | undefined {
+  if (path === null) {
+    return productPlaceholderSrc;
+  }
+  if (path.startsWith("/uploads/")) {
+    return `/api/v1${path}`;
+  }
+  return path;
+}
+
+export function MemberMerchantApplicationPanel() {
   const [csrfToken, setCsrfToken] = useState("");
   const [application, setApplication] = useState<MerchantApplication | null | undefined>(undefined);
   const [loading, setLoading] = useState(false);
@@ -131,7 +278,7 @@ function MemberMerchantApplicationPanel() {
           <strong>{application.shopName}</strong>
           <p>{application.shopDescription}</p>
           {application.rejectReason !== null ? <StatusMessage>{application.rejectReason}</StatusMessage> : null}
-          {application.status === "APPROVED" ? <Link to="/owner">进入店主后台</Link> : null}
+          {application.status === "APPROVED" ? <Link to="/owner/shop">进入店主后台</Link> : null}
         </div>
       ) : null}
       {canSubmit ? (
@@ -155,7 +302,7 @@ function MemberMerchantApplicationPanel() {
   );
 }
 
-function AdminMerchantApplicationsPanel() {
+export function AdminMerchantApplicationsPanel() {
   const [csrfToken, setCsrfToken] = useState("");
   const [applications, setApplications] = useState<AdminMerchantApplication[]>([]);
   const [statusFilter, setStatusFilter] = useState<MerchantApplicationStatus | "ALL">("ALL");
@@ -314,6 +461,91 @@ function AdminMerchantApplicationsPanel() {
   );
 }
 
+export function AdminCategoryPanel() {
+  const [csrfToken, setCsrfToken] = useState("");
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [message, setMessage] = useState("正在读取分类…");
+  const [loading, setLoading] = useState(false);
+
+  async function refresh(): Promise<void> {
+    const result = await listAdminCategories();
+    setCategories(result.data);
+    setMessage(result.meta.total === 0 ? "暂无分类。" : `共 ${result.meta.total} 个分类。`);
+  }
+
+  useEffect(() => {
+    let alive = true;
+    void Promise.all([fetchCsrf(), listAdminCategories()])
+      .then(([token, result]) => {
+        if (alive) {
+          setCsrfToken(token);
+          setCategories(result.data);
+          setMessage(result.meta.total === 0 ? "暂无分类。" : `共 ${result.meta.total} 个分类。`);
+        }
+      })
+      .catch((error) => {
+        if (alive) {
+          setMessage(errorMessage(error, "暂时无法读取分类。"));
+        }
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+    const name = formValue(formData, "name").trim();
+    const description = formValue(formData, "description").trim();
+    if (name.length < 2 || description.length < 2) {
+      setMessage("分类名称和简介至少 2 个字。");
+      return;
+    }
+    setLoading(true);
+    try {
+      const category = await createCategory({ name, description }, csrfToken);
+      setCategories((current) => [category, ...current.filter((item) => item.id !== category.id)]);
+      setMessage("分类已创建。");
+      event.currentTarget.reset();
+      await refresh();
+    } catch (error) {
+      setMessage(errorMessage(error, "分类创建失败。"));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <section className="stage-panel" aria-labelledby="category-admin-title">
+      <div className="section-heading">
+        <h2 id="category-admin-title">分类管理</h2>
+      </div>
+      <form className="form-grid" onSubmit={(event) => { void handleSubmit(event); }}>
+        <label className="field">
+          <span>分类名称</span>
+          <input aria-label="分类名称" name="name" minLength={2} maxLength={80} required />
+        </label>
+        <label className="field">
+          <span>分类简介</span>
+          <input aria-label="分类简介" name="description" minLength={2} maxLength={255} required />
+        </label>
+        <Button type="submit" loading={loading} disabled={csrfToken.length === 0}>创建分类</Button>
+      </form>
+      <div className="compact-list">
+        {categories.map((category) => (
+          <article className="compact-row" key={category.id}>
+            <strong>{category.name}</strong>
+            <span>{category.description}</span>
+            <StatusBadge status={category.status} />
+          </article>
+        ))}
+      </div>
+      <StatusMessage>{message}</StatusMessage>
+    </section>
+  );
+}
+
 function parseStatusFilter(value: string): MerchantApplicationStatus | "ALL" {
   if (value === "PENDING" || value === "APPROVED" || value === "REJECTED") {
     return value;
@@ -321,7 +553,7 @@ function parseStatusFilter(value: string): MerchantApplicationStatus | "ALL" {
   return "ALL";
 }
 
-function OwnerShopPanel() {
+export function OwnerShopPanel() {
   const [shop, setShop] = useState<ShopSummary | null>(null);
   const [message, setMessage] = useState("正在读取店铺资料…");
 
@@ -362,11 +594,140 @@ function OwnerShopPanel() {
   );
 }
 
-function StatusBadge({ status }: { status: MerchantApplication["status"] | ShopSummary["status"] }) {
+export function OwnerProductPanel() {
+  const [csrfToken, setCsrfToken] = useState("");
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [products, setProducts] = useState<OwnerProduct[]>([]);
+  const [message, setMessage] = useState("正在读取商品…");
+  const [loading, setLoading] = useState(false);
+
+  async function refresh(): Promise<void> {
+    const [nextCategories, productResult] = await Promise.all([listPublicCategories(), listOwnerProducts()]);
+    setCategories(nextCategories);
+    setProducts(productResult.data);
+    setMessage(productResult.meta.total === 0 ? "暂无商品。" : `共 ${productResult.meta.total} 件商品。`);
+  }
+
+  useEffect(() => {
+    let alive = true;
+    void Promise.all([fetchCsrf(), listPublicCategories(), listOwnerProducts()])
+      .then(([token, nextCategories, productResult]) => {
+        if (alive) {
+          setCsrfToken(token);
+          setCategories(nextCategories);
+          setProducts(productResult.data);
+          setMessage(productResult.meta.total === 0 ? "暂无商品。" : `共 ${productResult.meta.total} 件商品。`);
+        }
+      })
+      .catch((error) => {
+        if (alive) {
+          setMessage(errorMessage(error, "暂时无法读取商品。"));
+        }
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+    const categoryId = formValue(formData, "categoryId") || categories[0]?.id;
+    const name = formValue(formData, "name").trim();
+    const description = formValue(formData, "description").trim();
+    const price = formValue(formData, "price").trim();
+    const stock = Number(formValue(formData, "stock"));
+    const imageFile = formData.get("image");
+    if (categoryId === undefined || name.length < 2 || description.length < 10 || !/^\d+\.\d{2}$/.test(price) || !Number.isInteger(stock)) {
+      setMessage("请填写有效的商品分类、名称、简介、价格和库存。");
+      return;
+    }
+    setLoading(true);
+    try {
+      const mainImagePath = imageFile instanceof File && imageFile.size > 0
+        ? await uploadProductImage(imageFile, csrfToken)
+        : null;
+      const product = await createOwnerProduct({ categoryId, name, description, price, stock, mainImagePath }, csrfToken);
+      setProducts((current) => [product, ...current.filter((item) => item.id !== product.id)]);
+      setMessage("商品草稿已创建。");
+      event.currentTarget.reset();
+      await refresh();
+    } catch (error) {
+      setMessage(errorMessage(error, "商品创建失败。"));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function publish(productId: string): Promise<void> {
+    setLoading(true);
+    try {
+      await publishOwnerProduct(productId, csrfToken);
+      await refresh();
+    } catch (error) {
+      setMessage(errorMessage(error, "商品上架失败。"));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <section className="stage-panel" aria-labelledby="owner-products-title">
+      <div className="section-heading">
+        <h2 id="owner-products-title">商品管理</h2>
+      </div>
+      <form className="form-grid" onSubmit={(event) => { void handleSubmit(event); }}>
+        <label className="field">
+          <span>商品分类</span>
+          <select aria-label="商品分类" name="categoryId" disabled={categories.length === 0}>
+            {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+          </select>
+        </label>
+        <label className="field">
+          <span>商品名称</span>
+          <input aria-label="商品名称" name="name" minLength={2} maxLength={120} required />
+        </label>
+        <label className="field field--wide">
+          <span>商品简介</span>
+          <textarea aria-label="商品简介" name="description" rows={3} minLength={10} maxLength={1000} required />
+        </label>
+        <label className="field">
+          <span>商品价格</span>
+          <input aria-label="商品价格" name="price" inputMode="decimal" placeholder="19.90" required />
+        </label>
+        <label className="field">
+          <span>商品库存</span>
+          <input aria-label="商品库存" name="stock" inputMode="numeric" placeholder="20" required />
+        </label>
+        <label className="field">
+          <span>商品图片</span>
+          <input aria-label="商品图片" name="image" type="file" accept="image/png,image/jpeg,image/webp" />
+        </label>
+        <Button type="submit" loading={loading} disabled={csrfToken.length === 0 || categories.length === 0}>创建草稿商品</Button>
+      </form>
+      <div className="compact-list">
+        {products.map((product) => (
+          <article className="compact-row" key={product.id}>
+            <strong>{product.name}</strong>
+            <span>{product.categoryName}</span>
+            <span>¥{product.price}</span>
+            <StatusBadge status={product.status} />
+            {product.status === "DRAFT" || product.status === "UNPUBLISHED" ? (
+              <Button variant="secondary" loading={loading} onClick={() => { void publish(product.id); }}>上架</Button>
+            ) : null}
+          </article>
+        ))}
+      </div>
+      <StatusMessage>{message}</StatusMessage>
+    </section>
+  );
+}
+
+function StatusBadge({ status }: { status: MerchantApplication["status"] | ShopSummary["status"] | Category["status"] | OwnerProduct["status"] }) {
   return <span className="status-badge">{statusLabel(status)}</span>;
 }
 
-function statusLabel(status: MerchantApplication["status"] | ShopSummary["status"]): string {
+function statusLabel(status: MerchantApplication["status"] | ShopSummary["status"] | Category["status"] | OwnerProduct["status"]): string {
   if (status === "PENDING") {
     return "等待管理员审核";
   }
@@ -378,6 +739,21 @@ function statusLabel(status: MerchantApplication["status"] | ShopSummary["status
   }
   if (status === "ACTIVE") {
     return "营业中";
+  }
+  if (status === "DISABLED") {
+    return "已停用";
+  }
+  if (status === "DRAFT") {
+    return "草稿";
+  }
+  if (status === "PUBLISHED") {
+    return "已上架";
+  }
+  if (status === "UNPUBLISHED") {
+    return "已下架";
+  }
+  if (status === "ARCHIVED") {
+    return "已归档";
   }
   return "已暂停";
 }

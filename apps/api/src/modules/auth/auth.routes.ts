@@ -15,6 +15,8 @@ export function createAuthRouter(repository: AuthRepository): Router {
   router.post("/login", csrfProtection, controller.login);
   router.post("/logout", requireAuth(repository), csrfProtection, controller.logout);
   router.get("/session", requireAuth(repository), controller.currentSession);
+  router.get("/profile", requireAuth(repository), controller.privateProfile);
+  router.patch("/profile", requireAuth(repository), csrfProtection, controller.updatePrivateProfile);
 
   return router;
 }
