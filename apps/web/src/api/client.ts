@@ -50,7 +50,7 @@ export class ApiClientError extends Error {
 }
 
 export async function fetchCsrf(): Promise<string> {
-  const response = await request("/auth/csrf", { method: "GET" });
+  const response = await request("/auth/csrf", { method: "GET", cache: "no-store" });
   const parsed = successResponseSchema(authSessionDataSchema.pick({ csrfToken: true })).parse(response);
   return parsed.data.csrfToken;
 }

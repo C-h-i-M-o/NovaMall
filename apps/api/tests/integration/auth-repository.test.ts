@@ -26,6 +26,15 @@ describe("AuthRepository", () => {
   const repository = new AuthRepository(pool, phoneAesKey);
 
   beforeEach(async () => {
+    await pool.query("DELETE FROM payments");
+    await pool.query("DELETE FROM order_items");
+    await pool.query("DELETE FROM shop_orders");
+    await pool.query("DELETE FROM master_orders");
+    await pool.query("DELETE FROM cart_items");
+    await pool.query("DELETE FROM addresses");
+    await pool.query("DELETE FROM product_price_history");
+    await pool.query("DELETE FROM products");
+    await pool.query("DELETE FROM categories");
     await pool.query("DELETE FROM audit_logs");
     await pool.query("DELETE FROM shops");
     await pool.query("DELETE FROM merchant_applications");

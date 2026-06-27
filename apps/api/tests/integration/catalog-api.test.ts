@@ -147,6 +147,12 @@ async function createDraftProduct(
 
 describe("商品目录 API", () => {
   beforeEach(async () => {
+    await pool.query("DELETE FROM payments");
+    await pool.query("DELETE FROM order_items");
+    await pool.query("DELETE FROM shop_orders");
+    await pool.query("DELETE FROM master_orders");
+    await pool.query("DELETE FROM cart_items");
+    await pool.query("DELETE FROM addresses");
     await pool.query("DELETE FROM product_price_history");
     await pool.query("DELETE FROM products");
     await pool.query("DELETE FROM categories");

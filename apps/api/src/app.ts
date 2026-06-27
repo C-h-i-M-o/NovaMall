@@ -7,6 +7,8 @@ import { createAuthRouter } from "./modules/auth/auth.routes.js";
 import type { AuthRepository } from "./modules/auth/auth.repository.js";
 import { createCatalogRouter } from "./modules/catalog/catalog.routes.js";
 import type { CatalogRepository } from "./modules/catalog/catalog.repository.js";
+import { createCheckoutRouter } from "./modules/checkout/checkout.routes.js";
+import type { CheckoutRepository } from "./modules/checkout/checkout.repository.js";
 import { createHealthRouter } from "./modules/health/health.routes.js";
 import type { HealthRepository } from "./modules/health/health.repository.js";
 import { createMerchantApplicationsRouter } from "./modules/merchant-applications/merchant-applications.routes.js";
@@ -19,6 +21,7 @@ export interface AppDependencies {
   authRepository?: AuthRepository;
   merchantApplicationsRepository?: MerchantApplicationsRepository;
   catalogRepository?: CatalogRepository;
+  checkoutRepository?: CheckoutRepository;
   sessionStore?: MysqlSessionStore;
   sessionSecret?: string;
 }
@@ -60,6 +63,12 @@ export function createApp(dependencies: AppDependencies): Express {
       app.use(
         "/api/v1",
         createCatalogRouter(dependencies.authRepository, dependencies.catalogRepository)
+      );
+    }
+    if (dependencies.checkoutRepository !== undefined) {
+      app.use(
+        "/api/v1",
+        createCheckoutRouter(dependencies.authRepository, dependencies.checkoutRepository)
       );
     }
   }

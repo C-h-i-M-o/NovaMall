@@ -57,6 +57,15 @@ function readDisplayName(body: unknown): string {
 
 describe("认证 API", () => {
   beforeEach(async () => {
+    await pool.query("DELETE FROM payments");
+    await pool.query("DELETE FROM order_items");
+    await pool.query("DELETE FROM shop_orders");
+    await pool.query("DELETE FROM master_orders");
+    await pool.query("DELETE FROM cart_items");
+    await pool.query("DELETE FROM addresses");
+    await pool.query("DELETE FROM product_price_history");
+    await pool.query("DELETE FROM products");
+    await pool.query("DELETE FROM categories");
     await pool.query("DELETE FROM audit_logs");
     await pool.query("DELETE FROM shops");
     await pool.query("DELETE FROM merchant_applications");
@@ -115,6 +124,25 @@ describe("认证 API", () => {
       expect(errorResponseSchema.parse(response.body).error.code).toBe("CSRF_INVALID");
     });
     await agent.post("/api/v1/auth/register").set("X-CSRF-Token", "wrong").send({}).expect(403);
+  });
+
+  it("CSRF 响应不应被条件缓存为 304", async () => {
+    const agent = request.agent(app);
+    const firstResponse = await agent.get("/api/v1/auth/csrf").expect(200);
+    const etag = firstResponse.header.etag;
+    expect(etag).toEqual(expect.any(String));
+    if (typeof etag !== "string") {
+      throw new Error("CSRF 响应缺少 ETag");
+    }
+
+    await agent
+      .get("/api/v1/auth/csrf")
+      .set("If-None-Match", etag)
+      .expect(200)
+      .expect((response) => {
+        expect(response.header["cache-control"]).toContain("no-store");
+        expect(readCsrf(response.body)).toEqual(expect.any(String));
+      });
   });
 
   it("退出后原 Session 失效", async () => {
